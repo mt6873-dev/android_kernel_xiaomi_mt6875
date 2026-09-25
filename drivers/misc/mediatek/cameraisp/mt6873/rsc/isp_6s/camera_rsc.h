@@ -103,39 +103,84 @@ struct RSC_CLEAR_IRQ_STRUCT {
 
 
 
+/*
+ * Layout must match the official (A12) kernel / the A12 camerahalserver
+ * byte for byte: sizeof(struct RSC_Config) == 0xA8 (168), not 0x70 (112).
+ *
+ * Official kernel evidence:
+ *  - RSC_ioctl (0xffffff8008b003b0) uses 0xa8 as the element size/stride:
+ *        __arch_copy_from_user(&uStack_138, param_3, 0xa8)
+ *        memcpy(lVar8 + uVar12 * 0xa8 + 0x30, &uStack_138)
+ *        memcpy(..., uVar11 * 0x420 + (ulong)uVar29 * 0xa8 + ..., 0xa8)
+ *  - CmdqRSCHW (0xffffff8008afda7c) reads the fields it programs into the
+ *    RSC registers at these word offsets (write order == A11's register
+ *    order INT_CTL, CTRL, SIZE, APLI_C, APLI_P, IMGI_C, IMGI_P, IMGI_C_STRIDE,
+ *    IMGI_P_STRIDE, MVI, MVI_STRIDE, MVO, MVO_STRIDE, BVO, BVO_STRIDE,
+ *    <13 tunable>, DCM_CTL, START, START):
+ *        0x00 CTRL          0x01 SIZE
+ *        0x02 IMGI_C_BASE   0x05 IMGI_C_STRIDE   0x06 IMGI_P_BASE   0x09 IMGI_P_STRIDE
+ *        0x0A MVI_BASE      0x0D MVI_STRIDE      0x0E APLI_C_BASE   0x11 APLI_P_BASE
+ *        0x14 MVO_BASE      0x17 MVO_STRIDE      0x18 BVO_BASE      0x1B BVO_STRIDE
+ *        0x1C..0x28 the 13 tunable fields, 0x29 STA_0   (word index)
+ *    i.e. every image descriptor is {base, rsv, rsv, stride} (16 bytes),
+ *    the two APLI descriptors are {base, rsv, rsv} (12 bytes), and the
+ *    13 tunable fields follow contiguously.
+ *
+ * The 15 reserved words are not consumed by CmdqRSCHW (the RSC only exposes
+ * BASE/STRIDE registers per image), but they must stay in place, otherwise
+ * every field from IMGI_C_STRIDE on is read from the wrong offset - which is
+ * exactly what happened with the old 112-byte layout:
+ *    A11 read IMGI_C_STRIDE=0x0C  but the HAL wrote it at 0x14
+ *    A11 read APLI_P_BASE =0x24   and got the HAL's IMGI_P_STRIDE (0x120)
+ */
 struct RSC_Config {
-	unsigned int RSC_CTRL;
-	unsigned int RSC_SIZE;
-	unsigned int RSC_IMGI_C_BASE_ADDR;
-	unsigned int RSC_IMGI_C_STRIDE;
-	unsigned int RSC_IMGI_P_BASE_ADDR;
-	unsigned int RSC_IMGI_P_STRIDE;
-	unsigned int RSC_MVI_BASE_ADDR;
-	unsigned int RSC_MVI_STRIDE;
-	unsigned int RSC_APLI_C_BASE_ADDR;
-	unsigned int RSC_APLI_P_BASE_ADDR;
-	unsigned int RSC_MVO_BASE_ADDR;
-	unsigned int RSC_MVO_STRIDE;
-	unsigned int RSC_BVO_BASE_ADDR;
-	unsigned int RSC_BVO_STRIDE;
+	unsigned int RSC_CTRL;			/* 0x00 */
+	unsigned int RSC_SIZE;			/* 0x04 */
+	unsigned int RSC_IMGI_C_BASE_ADDR;	/* 0x08 */
+	unsigned int RSC_IMGI_C_RSV0;		/* 0x0C */
+	unsigned int RSC_IMGI_C_RSV1;		/* 0x10 */
+	unsigned int RSC_IMGI_C_STRIDE;		/* 0x14 */
+	unsigned int RSC_IMGI_P_BASE_ADDR;	/* 0x18 */
+	unsigned int RSC_IMGI_P_RSV0;		/* 0x1C */
+	unsigned int RSC_IMGI_P_RSV1;		/* 0x20 */
+	unsigned int RSC_IMGI_P_STRIDE;		/* 0x24 */
+	unsigned int RSC_MVI_BASE_ADDR;		/* 0x28 */
+	unsigned int RSC_MVI_RSV0;		/* 0x2C */
+	unsigned int RSC_MVI_RSV1;		/* 0x30 */
+	unsigned int RSC_MVI_STRIDE;		/* 0x34 */
+	unsigned int RSC_APLI_C_BASE_ADDR;	/* 0x38 */
+	unsigned int RSC_APLI_C_RSV0;		/* 0x3C */
+	unsigned int RSC_APLI_C_RSV1;		/* 0x40 */
+	unsigned int RSC_APLI_P_BASE_ADDR;	/* 0x44 */
+	unsigned int RSC_APLI_P_RSV0;		/* 0x48 */
+	unsigned int RSC_APLI_P_RSV1;		/* 0x4C */
+	unsigned int RSC_MVO_BASE_ADDR;		/* 0x50 */
+	unsigned int RSC_MVO_RSV0;		/* 0x54 */
+	unsigned int RSC_MVO_RSV1;		/* 0x58 */
+	unsigned int RSC_MVO_STRIDE;		/* 0x5C */
+	unsigned int RSC_BVO_BASE_ADDR;		/* 0x60 */
+	unsigned int RSC_BVO_RSV0;		/* 0x64 */
+	unsigned int RSC_BVO_RSV1;		/* 0x68 */
+	unsigned int RSC_BVO_STRIDE;		/* 0x6C */
 #define RSC_TUNABLE
 #ifdef RSC_TUNABLE
-	unsigned int RSC_MV_OFFSET;
-	unsigned int RSC_GMV_OFFSET;
-	unsigned int RSC_CAND_NUM;
-	unsigned int RSC_RAND_HORZ_LUT;
-	unsigned int RSC_RAND_VERT_LUT;
-	unsigned int RSC_SAD_CTRL;
-	unsigned int RSC_SAD_EDGE_GAIN_CTRL;
-	unsigned int RSC_SAD_CRNR_GAIN_CTRL;
-	unsigned int RSC_STILL_STRIP_CTRL0;
-	unsigned int RSC_STILL_STRIP_CTRL1;
-	unsigned int RSC_RAND_PNLTY_CTRL;
-	unsigned int RSC_RAND_PNLTY_GAIN_CTRL0;
-	unsigned int RSC_RAND_PNLTY_GAIN_CTRL1;
+	unsigned int RSC_MV_OFFSET;		/* 0x70 */
+	unsigned int RSC_GMV_OFFSET;		/* 0x74 */
+	unsigned int RSC_CAND_NUM;		/* 0x78 */
+	unsigned int RSC_RAND_HORZ_LUT;		/* 0x7C */
+	unsigned int RSC_RAND_VERT_LUT;		/* 0x80 */
+	unsigned int RSC_SAD_CTRL;		/* 0x84 */
+	unsigned int RSC_SAD_EDGE_GAIN_CTRL;	/* 0x88 */
+	unsigned int RSC_SAD_CRNR_GAIN_CTRL;	/* 0x8C */
+	unsigned int RSC_STILL_STRIP_CTRL0;	/* 0x90 */
+	unsigned int RSC_STILL_STRIP_CTRL1;	/* 0x94 */
+	unsigned int RSC_RAND_PNLTY_CTRL;	/* 0x98 */
+	unsigned int RSC_RAND_PNLTY_GAIN_CTRL0;	/* 0x9C */
+	unsigned int RSC_RAND_PNLTY_GAIN_CTRL1;	/* 0xA0 */
 #endif
-	unsigned int RSC_STA_0;
-};
+	unsigned int RSC_STA_0;			/* 0xA4 */
+};						/* sizeof = 0xA8 */
+
 
 /*
  *
