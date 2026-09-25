@@ -99,6 +99,17 @@ enum MSDK_SCENARIO_ID_ENUM {
 	MSDK_SCENARIO_ID_CUSTOM3,
 	MSDK_SCENARIO_ID_CUSTOM4,
 	MSDK_SCENARIO_ID_CUSTOM5,
+	MSDK_SCENARIO_ID_CUSTOM6,
+	MSDK_SCENARIO_ID_CUSTOM7,
+	MSDK_SCENARIO_ID_CUSTOM8,
+	MSDK_SCENARIO_ID_CUSTOM9,
+	MSDK_SCENARIO_ID_CUSTOM10,
+	MSDK_SCENARIO_ID_CUSTOM11,
+	MSDK_SCENARIO_ID_CUSTOM12,
+	MSDK_SCENARIO_ID_CUSTOM13,
+	MSDK_SCENARIO_ID_CUSTOM14,
+	MSDK_SCENARIO_ID_CUSTOM15,
+
 	MSDK_SCENARIO_ID_MAX,
 
 	/* Legacy scenario */
@@ -121,7 +132,7 @@ enum ACDK_CAMERA_OPERATION_MODE_ENUM {
  ************************************************************************/
 
 /*  */
-#define MAX_NUM_OF_SUPPORT_SENSOR 16
+#define MAX_NUM_OF_SUPPORT_SENSOR 32
 /*  */
 #define SENSOR_CLOCK_POLARITY_HIGH    0
 #define SENSOR_CLOCK_POLARITY_LOW 1
@@ -282,7 +293,6 @@ enum ACDK_SENSOR_FEATURE_ENUM {
 	SENSOR_FEATURE_GET_PERIOD_BY_SCENARIO,
 	SENSOR_FEATURE_GET_BINNING_TYPE,
 	SENSOR_FEATURE_GET_Y_AVERAGE,
-    SENSOR_FEATURE_GET_HS_TRAIL,
 	SENSOR_FEATURE_GET_GAIN_RANGE_BY_SCENARIO,
 	SENSOR_FEATURE_GET_BASE_GAIN_ISO_AND_STEP,
 	SENSOR_FEATURE_GET_MIN_SHUTTER_BY_SCENARIO,
@@ -293,6 +303,11 @@ enum ACDK_SENSOR_FEATURE_ENUM {
 	SENSOR_FEATURE_GET_STAGGER_MAX_EXP_TIME,
 	SENSOR_FEATURE_SEAMLESS_SWITCH,
 	SENSOR_FEATURE_GET_SEAMLESS_SCENARIOS,
+	/*
+	 * A11 特有 feature: 必须放在通用 feature 之后,
+	 * 否则其后所有 feature 值比 A12 偏移, 与 HAL 交互会错位
+	 */
+	SENSOR_FEATURE_GET_HS_TRAIL,
 	SENSOR_FEATURE_MAX
 };
 
@@ -547,6 +562,16 @@ struct ACDK_SENSOR_INFO_STRUCT {
 	MUINT32 Custom3DelayFrame;
 	MUINT32 Custom4DelayFrame;
 	MUINT32 Custom5DelayFrame;
+	MUINT32 Custom6DelayFrame;
+	MUINT32 Custom7DelayFrame;
+	MUINT32 Custom8DelayFrame;
+	MUINT32 Custom9DelayFrame;
+	MUINT32 Custom10DelayFrame;
+	MUINT32 Custom11DelayFrame;
+	MUINT32 Custom12DelayFrame;
+	MUINT32 Custom13DelayFrame;
+	MUINT32 Custom14DelayFrame;
+	MUINT32 Custom15DelayFrame;
 	MUINT16 SensorGrabStartX;
 	MUINT16 SensorGrabStartY;
 	MUINT16 SensorGrabStartX_PRV;
@@ -569,6 +594,26 @@ struct ACDK_SENSOR_INFO_STRUCT {
 	MUINT16 SensorGrabStartY_CST4;
 	MUINT16 SensorGrabStartX_CST5;
 	MUINT16 SensorGrabStartY_CST5;
+	MUINT16 SensorGrabStartX_CST6;
+	MUINT16 SensorGrabStartY_CST6;
+	MUINT16 SensorGrabStartX_CST7;
+	MUINT16 SensorGrabStartY_CST7;
+	MUINT16 SensorGrabStartX_CST8;
+	MUINT16 SensorGrabStartY_CST8;
+	MUINT16 SensorGrabStartX_CST9;
+	MUINT16 SensorGrabStartY_CST9;
+	MUINT16 SensorGrabStartX_CST10;
+	MUINT16 SensorGrabStartY_CST10;
+	MUINT16 SensorGrabStartX_CST11;
+	MUINT16 SensorGrabStartY_CST11;
+	MUINT16 SensorGrabStartX_CST12;
+	MUINT16 SensorGrabStartY_CST12;
+	MUINT16 SensorGrabStartX_CST13;
+	MUINT16 SensorGrabStartY_CST13;
+	MUINT16 SensorGrabStartX_CST14;
+	MUINT16 SensorGrabStartY_CST14;
+	MUINT16 SensorGrabStartX_CST15;
+	MUINT16 SensorGrabStartY_CST15;
 	MUINT16 SensorDrivingCurrent;
 	MUINT8 SensorMasterClockSwitch;
 
@@ -934,7 +979,7 @@ struct SET_PD_BLOCK_INFO_T {
 	MUINT32 i4BlockNumY;
 	/* 1: 1st line is long exposure, 0: 1st line is short exposure*/
 	MUINT32 i4LeFirst;
-	MUINT32 i4Crop[10][2]; /* [scenario][crop] -> (xcrop, ycrop) */
+	MUINT32 i4Crop[20][2]; /* [scenario][crop] -> (xcrop, ycrop) */
 };
 
 enum IMGSENSOR_HDR_SUPPORT_TYPE_ENUM {
