@@ -822,6 +822,25 @@ enum ISP_HALT_DMA_ENUM {
 #define ISP_ION_IMPORT_A12 0x40686B1B
 #define ISP_ION_FREE_A12   0x40686B1C
 
+/* A12 firmware's camerahalserver renumbers SET_VIR_CQCNT from A11's
+ * cmd 45 (0xC0086B2D) to cmd 49 (0xC0086B31).
+ *
+ * Official kernel evidence (ISP_ioctl @ 0xffffff8008aec228, jump table
+ * 0xffffff8009b01870, range 0xC0086B09..0xC0086B31; cmd 49 handler @
+ * 0xffffff8008aed444):
+ *   add x0, sp, #0x40 ; mov w2, #0x8 ; bl __arch_copy_from_user
+ *   ldr w2, [sp, #64] ; cmp w2, #0x2 ; b.hi <log+err>
+ *   ldr w8, [sp, #68] ; str w8, [x9, x2, lsl #2]   (x9 = g_virtual_cq_cnt)
+ * i.e. the same logic as A11's ISP_SET_VIR_CQCNT: arg = {u32 index; u32 value;},
+ * index <= ISP_IRQ_TYPE_INT_CAM_C_ST - ISP_IRQ_TYPE_INT_CAM_A_ST (=2),
+ * g_virtual_cq_cnt[index] = value.
+ *
+ * Without it the virtual CQ counter stays 0 while the HW counter advances,
+ * so every SOF reports "CAMx PHY cqcnt:1 != VIR cqcnt:0" / "Lost p1 done"
+ * and no preview frame is produced.
+ */
+#define ISP_SET_VIR_CQCNT_A12 0xC0086B31
+
 #define ISP_ION_FREE                             \
 	_IOW(ISP_MAGIC, ISP_CMD_ION_FREE, struct ISP_DEV_ION_NODE_STRUCT)
 
