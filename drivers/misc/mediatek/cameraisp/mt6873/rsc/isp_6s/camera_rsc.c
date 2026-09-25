@@ -189,6 +189,13 @@ struct RSC_CLK_STRUCT rsc_clk;
 #define RSC_WR32(addr, data) mt_reg_sync_writel(data, addr)
 #define RSC_RD32(addr) ioread32(addr)
 /*******************************************************************************
+ * TEMP DIAG: temporary instrumentation used to capture the RSC/CMDQ failure
+ * scene (RSC stops delivering frames, its CMDQ packet hangs on the "rsc_eof"
+ * GCE event 179).  Set RSC_TEMP_DIAG to 0 (or delete every block guarded by
+ * it) once the logs have been collected.
+ ******************************************************************************/
+#define RSC_TEMP_DIAG (1)
+/*******************************************************************************
  *
  ******************************************************************************/
 /* dynamic log level */
@@ -1031,6 +1038,23 @@ signed int CmdqRSCHW(struct frame *frame)
 	LOG_DBG("%s request sent to CMDQ driver", __func__);
 	pRscConfig = (struct RSC_Config *) frame->data;
 
+#if RSC_TEMP_DIAG
+	LOG_INF("DIAG req CTRL=0x%x SIZE=0x%x IMGI_C=0x%x/0x%x IMGI_P=0x%x/0x%x MVI=0x%x/0x%x MVO=0x%x/0x%x BVO=0x%x/0x%x APLI_C=0x%x APLI_P=0x%x\n",
+		pRscConfig->RSC_CTRL, pRscConfig->RSC_SIZE,
+		pRscConfig->RSC_IMGI_C_BASE_ADDR,
+		pRscConfig->RSC_IMGI_C_STRIDE,
+		pRscConfig->RSC_IMGI_P_BASE_ADDR,
+		pRscConfig->RSC_IMGI_P_STRIDE,
+		pRscConfig->RSC_MVI_BASE_ADDR,
+		pRscConfig->RSC_MVI_STRIDE,
+		pRscConfig->RSC_MVO_BASE_ADDR,
+		pRscConfig->RSC_MVO_STRIDE,
+		pRscConfig->RSC_BVO_BASE_ADDR,
+		pRscConfig->RSC_BVO_STRIDE,
+		pRscConfig->RSC_APLI_C_BASE_ADDR,
+		pRscConfig->RSC_APLI_P_BASE_ADDR);
+#endif
+
 	LOG_DBG("RSC_CTRL_REG:0x%x!\n", pRscConfig->RSC_CTRL);
 	LOG_DBG("RSC_SIZE_REG:0x%x!\n", pRscConfig->RSC_SIZE);
 	LOG_DBG("RSC_IMGI_C_BASE_ADDR_REG:0x%x!\n",
@@ -1147,8 +1171,19 @@ signed int CmdqRSCHW(struct frame *frame)
 	/* non-blocking API, Please  use cmdqRecFlushAsync() */
 	//cmdq_task_flush_async_destroy(handle);
 	/* flush and destroy in cmdq */
+#if RSC_TEMP_DIAG
+	{
+		s32 diag_flush_ret;
+
+		diag_flush_ret = cmdq_pkt_flush_threaded(pkt,
+			rsc_cmdq_cb_destroy, (void *)pkt);
+		LOG_INF("DIAG cmdq_pkt_flush_threaded ret=%d\n",
+			diag_flush_ret);
+	}
+#else
 	cmdq_pkt_flush_threaded(pkt,
 		rsc_cmdq_cb_destroy, (void *)pkt);
+#endif
 
 #else  // old cmdq function
 	cmdqRecCreate(CMDQ_SCENARIO_KERNEL_CONFIG_GENERAL, &handle);
@@ -1837,6 +1872,16 @@ static signed int RSC_WaitIrq(struct RSC_WAIT_IRQ_STRUCT *WaitIrq)
 		     whichReq, WaitIrq->ProcessID, RSCInfo.IrqInfo.RscIrqCnt,
 			RSCInfo.WriteReqIdx, RSCInfo.ReadReqIdx);
 
+#if RSC_TEMP_DIAG
+		LOG_INF("DIAG WaitIrq timeout bDumpReg=%d Clear=%d UserKey=%d Tout=%d STA=0x%x\n",
+			WaitIrq->bDumpReg, WaitIrq->Clear, WaitIrq->UserKey,
+			WaitIrq->Timeout, RSC_RD32(RSC_INT_STATUS_REG));
+		if (!WaitIrq->bDumpReg) {
+			/* HAL did not ask for it: force the dump anyway */
+			RSC_DumpReg();
+			request_dump(&rsc_reqs);
+		}
+#endif
 		if (WaitIrq->bDumpReg) {
 			RSC_DumpReg();
 			request_dump(&rsc_reqs);
@@ -2000,10 +2045,10 @@ static long RSC_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Param)
 				}
 
 				LOG_INF(
-				"IRQ clear(%d), type(%d), userKey(%d), timeout(%d), status(%d)\n",
+				"IRQ clear(%d), type(%d), userKey(%d), timeout(%d), status(%d), bDumpReg(%d)\n",
 					IrqInfo.Clear, IrqInfo.Type,
 					IrqInfo.UserKey, IrqInfo.Timeout,
-					IrqInfo.Status);
+					IrqInfo.Status, IrqInfo.bDumpReg);
 				IrqInfo.ProcessID = pUserInfo->Pid;
 				Ret = RSC_WaitIrq(&IrqInfo);
 
@@ -2799,6 +2844,13 @@ static signed int RSC_release(struct inode *pInode, struct file *pFile)
 
 
 	/* Disable clock. */
+#if RSC_TEMP_DIAG
+	/* dump while the clock is still on: this is the state session N+1 inherits */
+	LOG_INF("DIAG release clockCnt=%d UserCount=%d STA=0x%x\n",
+		g_u4EnableClockCount, RSCInfo.UserCount,
+		RSC_RD32(RSC_INT_STATUS_REG));
+	RSC_DumpReg();
+#endif
 	RSC_EnableClock(MFALSE);
 	LOG_DBG("RSC release g_u4EnableClockCount: %d", g_u4EnableClockCount);
 
