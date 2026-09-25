@@ -1486,20 +1486,21 @@ if ((strcmp("ccu", g_ccu_device->dev->of_node->name) == 0)) {
 	LOG_INF("dmem_base pa: 0x%x, size: 0x%x\n", phy_addr, phy_size);
 	LOG_INF("dmem_base va: 0x%lx\n", g_ccu_device->dmem_base);
 
-	/*remap bin_base (PMEM/IMEM)*/
-	/* 官核 ccu_da_to_va: da < 0x10000000 的段(DP_BIN)映射到 IMEM,
-	 * 官核该基址全局非 0, A11 之前未 ioremap, 必须补齐 */
+	/*remap pmem_base (IMEM)*/
+	/* 官核 ccu_init_hw: *(device+0x38) -> IMEM 全局, ccu_da_to_va 的
+	 * da < 0x10000000 段(DP_BIN)与 ccu_print_reg 都用它,
+	 * 官核该全局非 0, A11 之前未 ioremap, 必须补齐 */
 	phy_addr = CCU_PMEM_BASE;
 	phy_size = CCU_PMEM_SIZE;
 #ifdef CCU_LDVT
-	g_ccu_device->bin_base =
+	g_ccu_device->pmem_base =
 		(unsigned long)ioremap_wc(phy_addr, phy_size);
 #else
-	g_ccu_device->bin_base =
+	g_ccu_device->pmem_base =
 		(unsigned long)ioremap(phy_addr, phy_size);
 #endif
-	LOG_INF("bin_base pa: 0x%x, size: 0x%x\n", phy_addr, phy_size);
-	LOG_INF("bin_base va: 0x%lx\n", g_ccu_device->bin_base);
+	LOG_INF("pmem_base pa: 0x%x, size: 0x%x\n", phy_addr, phy_size);
+	LOG_INF("pmem_base va: 0x%lx\n", g_ccu_device->pmem_base);
 
 	/*remap camsys_base*/
 	phy_addr = CCU_CAMSYS_BASE;

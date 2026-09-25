@@ -37,18 +37,21 @@ struct ccu_device_s {
 	unsigned long camsys_base;
 	unsigned long bin_base;
 	unsigned long dmem_base;
-	unsigned long n3d_a_base;
-	unsigned int irq_num;
-	struct mutex user_mutex;
+	unsigned long pmem_base;	/* 官核 @0x38: IMEM, da_to_va 使用 */
+	unsigned long ddrmem_base;	/* 官核 @0x40 */
+	unsigned int irq_num;		/* 官核 @0x48 */
+	struct mutex user_mutex;	/* 官核 @0x50 (ioctl 互斥) */
 	struct mutex clk_mutex;
 	struct mutex ion_client_mutex;
-	u8 *i2c_dma_vaddr;
-	dma_addr_t i2c_dma_paddr;
-	uint32_t i2c_dma_mva;
 	/* list of vlist_type(ccu_user_t) */
 	struct list_head user_list;
 	/* notify enque thread */
 	wait_queue_head_t cmd_wait;
+	/* A11 保留项(官核无)：置于末尾, 以免破坏以上官核偏移 */
+	unsigned long n3d_a_base;
+	u8 *i2c_dma_vaddr;
+	dma_addr_t i2c_dma_paddr;
+	uint32_t i2c_dma_mva;
 };
 
 struct ccu_user_s {

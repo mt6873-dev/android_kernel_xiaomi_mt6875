@@ -55,6 +55,7 @@
 
 static uint64_t camsys_base;
 static uint64_t bin_base;
+static uint64_t pmem_base;	/* 官核 @0x38: IMEM, da_to_va/print_reg 使用 */
 static uint64_t dmem_base;
 
 static struct ccu_device_s *ccu_dev;
@@ -409,6 +410,7 @@ int ccu_init_hw(struct ccu_device_s *device)
 	ccu_base = device->ccu_base;
 	camsys_base = device->camsys_base;
 	bin_base = device->bin_base;
+	pmem_base = device->pmem_base;
 	dmem_base = device->dmem_base;
 
 	ccu_dev = device;
@@ -1278,7 +1280,7 @@ EXIT:
 
 /*
  * 官核 ccu_da_to_va (0xffffff8008ca67bc):
- *   da <  0x10000000            -> IMEM(bin_base) + da,        限 0x20000
+ *   da <  0x10000000            -> IMEM(pmem_base) + da,      限 0x20000
  *   0x10000000 <= da < 0x80000000 -> DDR(bin_mem->va) + off,
  *                                   限 (off+len)>>21 < 0xb 且 < bin_mem->size
  *   da >= 0x80000000            -> DMEM(dmem_base) + off,      限 0x20000
@@ -1298,8 +1300,8 @@ void *ccu_da_to_va(u64 da, int len)
 		offset = da;
 		if ((offset >= 0) && ((offset + len) < CCU_PMEM_SIZE)) {
 			LOG_INF_MUST("da(0x%lx) to va(0x%lx)\n",
-				da, bin_base + offset);
-			return (uint32_t *)(bin_base + offset);
+				da, pmem_base + offset);
+			return (uint32_t *)(pmem_base + offset);
 		}
 	} else if (da >= CCU_CORE_DMEM_BASE) {
 		offset = da - CCU_CORE_DMEM_BASE;
@@ -1387,7 +1389,7 @@ void ccu_print_reg(uint32_t *Reg)
 
 	for (i = 0; i < (CCU_PMEM_SIZE / 4); i++)
 		Reg[CCU_HW_DUMP_SIZE / 4 + CCU_DMEM_SIZE / 4 + i] =
-			*(volatile uint32_t *)(bin_base + i * 4);
+			*(volatile uint32_t *)(pmem_base + i * 4);
 }
 
 /*

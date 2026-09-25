@@ -42,7 +42,7 @@ void ccu_ion_free_import_handle(struct ion_handle *handle);
  *   size          @0x18
  *   occupiedSize  @0x1c
  *   cached        @0x20 (官核按 u32 读写)
- *   dump_time     @0x24 (官核按 char 读: >10MB 分配时打计时日志)
+ *   ion_log       @0x24 (官核按 char 读: >10MB 分配/释放时打日志)
  */
 struct CcuMemInfo {
 	int shareFd;
@@ -52,7 +52,7 @@ struct CcuMemInfo {
 	uint32_t size;
 	uint32_t occupiedSize;
 	uint32_t cached;
-	uint8_t dump_time;
+	bool ion_log;
 };
 
 /* 官核 sizeof(struct CcuMemHandle) = 48B (0x30) */
