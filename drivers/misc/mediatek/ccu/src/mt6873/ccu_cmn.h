@@ -48,6 +48,7 @@ struct ccu_device_s {
 	/* notify enque thread */
 	wait_queue_head_t cmd_wait;
 	/* A11 保留项(官核无)：置于末尾, 以免破坏以上官核偏移 */
+	struct mutex user_list_mutex;	/* user_list 保护, 避免与 user_mutex 重入 */
 	unsigned long n3d_a_base;
 	u8 *i2c_dma_vaddr;
 	dma_addr_t i2c_dma_paddr;

@@ -255,6 +255,8 @@ static const struct file_operations ccu_fops = {
 /*                                                                           */
 /*---------------------------------------------------------------------------*/
 static int ccu_num_users;
+/* 官核: 打开该设备的用户计数(全局 0xaf2a810), release 时仅最后一个用户做清理 */
+static int _user_count;
 
 int ccu_create_user(struct ccu_user_s **user)
 {
@@ -276,10 +278,12 @@ int ccu_create_user(struct ccu_user_s **user)
 	init_waitqueue_head(&u->deque_wait);
 	/*mutex_unlock(&u->data_mutex);*/
 
-	mutex_lock(&g_ccu_device->user_mutex);
+	/* 官核: open/release 已在外层持设备锁(device+0x50), 这里改用
+	 * user_list 自身的锁保护链表, 避免同一把锁重复加锁 */
+	mutex_lock(&g_ccu_device->user_list_mutex);
 	list_add_tail(vlist_link(u, struct ccu_user_s),
 		&g_ccu_device->user_list);
-	mutex_unlock(&g_ccu_device->user_mutex);
+	mutex_unlock(&g_ccu_device->user_list_mutex);
 
 	*user = u;
 	return 0;
@@ -399,9 +403,9 @@ int ccu_delete_user(struct ccu_user_s *user)
 	/* ccu_dropped_command_notify(user, command);*/
 	ccu_flush_commands_from_queue(user);
 
-	mutex_lock(&g_ccu_device->user_mutex);
+	mutex_lock(&g_ccu_device->user_list_mutex);
 	list_del(vlist_link(user, struct ccu_user_s));
-	mutex_unlock(&g_ccu_device->user_mutex);
+	mutex_unlock(&g_ccu_device->user_list_mutex);
 
 	kfree(user);
 
@@ -440,24 +444,68 @@ int ccu_set_power(struct ccu_power_s *power)
 	return ccu_power(power);
 }
 
+/*
+ * 官核 ccu_open (0xffffff8008cab2ec):
+ *   mutex_lock(device + 0x50) 保护整个 open
+ *   ccu_create_user -> filp->private_data = user; _user_count++
+ *   _user_count > 1 时清理上一个用户遗留:
+ *     ccu_force_powerdown + 释放 import handles +
+ *     ccu_deallocate_mem(cached=0) + ccu_deallocate_mem(cached=1) +
+ *     ccu_ion_uninit
+ *   _clk_count = 0; ccu_ion_init(); 重置 import_buffer_handle[]
+ */
 static int ccu_open(struct inode *inode, struct file *flip)
 {
 	int ret = 0, i;
-
 	struct ccu_user_s *user;
-	_clk_count = 0;
+	struct CcuMemHandle handle = {0};
+
+	mutex_lock(&g_ccu_device->user_mutex);
+
+	LOG_INF_MUST("%s pid:%d tid:%d cnt:%d+\n",
+		__func__, current->pid, current->tgid, _user_count);
+
 	ccu_create_user(&user);
 	if (IS_ERR_OR_NULL(user)) {
 		LOG_ERR("fail to create user\n");
+		mutex_unlock(&g_ccu_device->user_mutex);
 		return -ENOMEM;
 	}
 
 	flip->private_data = user;
+	_user_count++;
+
+	if (_user_count > 1) {
+		LOG_INF_MUST("%s clean legacy data flow-\n", __func__);
+		ccu_force_powerdown();
+
+		for (i = 0; i < CCU_IMPORT_BUF_NUM; i++) {
+			if (import_buffer_handle[i] ==
+				(struct ion_handle *)CCU_IMPORT_BUF_UNDEF) {
+				LOG_INF_MUST("freed buffer count: %d\n", i);
+				break;
+			}
+			ccu_ion_free_import_handle(
+				import_buffer_handle[i]);
+		}
+
+		/* 官核: 释放两个 cached 槽位的 ion buffer */
+		handle.meminfo.cached = 0;
+		ccu_deallocate_mem(&handle);
+		handle.meminfo.cached = 1;
+		ccu_deallocate_mem(&handle);
+
+		ccu_ion_uninit();
+	}
+
+	_clk_count = 0;
 	ccu_ion_init();
 
 	for (i = 0; i < CCU_IMPORT_BUF_NUM; i++)
 		import_buffer_handle[i] =
 			(struct ion_handle *)CCU_IMPORT_BUF_UNDEF;
+
+	mutex_unlock(&g_ccu_device->user_mutex);
 
 	return ret;
 }
@@ -1248,12 +1296,38 @@ EXIT:
 	return ret;
 }
 
+/*
+ * 官核 ccu_release (0xffffff8008cab4ec):
+ *   mutex_lock(device + 0x50)
+ *   ccu_delete_user(user); _user_count--
+ *   _user_count > 0 -> 直接返回(bypass release flow)
+ *   _user_count < 1 -> ccu_force_powerdown + 释放 import handles +
+ *     ccu_deallocate_mem(cached=0) + ccu_deallocate_mem(cached=1) +
+ *     ion_client_destroy(ccu_ion_uninit)
+ * 关键: 不释放这两个槽位会导致 ion client 已销毁而
+ *       ccu_buffer_handle[].meminfo.va 仍被 ccu_da_to_va 使用,
+ *       再次 ALLOC_MEM/LOAD_CCU_BIN 时写失效 kmap -> oops
+ */
 static int ccu_release(struct inode *inode, struct file *flip)
 {
 	struct ccu_user_s *user = flip->private_data;
 	int i = 0;
+	struct CcuMemHandle handle = {0};
 
-	LOG_INF_MUST("%s +\n", __func__);
+	mutex_lock(&g_ccu_device->user_mutex);
+
+	LOG_INF_MUST("%s pid:%d tid:%d cnt:%d+\n", __func__,
+		user->open_pid, user->open_tgid, _user_count);
+
+	ccu_delete_user(user);
+	_user_count--;
+
+	if (_user_count > 0) {
+		LOG_INF_MUST("%s bypass release flow-\n", __func__);
+		mutex_unlock(&g_ccu_device->user_mutex);
+		return 0;
+	}
+
 	ccu_force_powerdown();
 
 	for (i = 0; i < CCU_IMPORT_BUF_NUM; i++) {
@@ -1267,11 +1341,17 @@ static int ccu_release(struct inode *inode, struct file *flip)
 		ccu_ion_free_import_handle(import_buffer_handle[i]);
 	}
 
-	ccu_delete_user(user);
+	/* 官核: 释放两个 cached 槽位, 必须在 ccu_ion_uninit 之前 */
+	handle.meminfo.cached = 0;
+	ccu_deallocate_mem(&handle);
+	handle.meminfo.cached = 1;
+	ccu_deallocate_mem(&handle);
 
 	ccu_ion_uninit();
 
 	LOG_INF_MUST("%s -\n", __func__);
+
+	mutex_unlock(&g_ccu_device->user_mutex);
 
 	return 0;
 }
@@ -1726,6 +1806,7 @@ static int __init CCU_INIT(void)
 
 	INIT_LIST_HEAD(&g_ccu_device->user_list);
 	mutex_init(&g_ccu_device->user_mutex);
+	mutex_init(&g_ccu_device->user_list_mutex);
 	mutex_init(&g_ccu_device->clk_mutex);
 	mutex_init(&g_ccu_device->ion_client_mutex);
 	init_waitqueue_head(&g_ccu_device->cmd_wait);
