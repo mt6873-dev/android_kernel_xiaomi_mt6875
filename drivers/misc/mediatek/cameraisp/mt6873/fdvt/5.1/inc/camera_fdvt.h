@@ -179,6 +179,28 @@ struct fdvt_config {
 	unsigned int FDVT_FD_CON_BUFSIZE;
 	unsigned int FDVT_FD_POSE_CON_BUFSIZE;
 	FDVT_MetaDataToGCE FDVT_METADATA_TO_GCE;
+	/*
+	 * ABI padding, must keep sizeof(struct fdvt_config) == 0x140 (320).
+	 *
+	 * Official kernel evidence:
+	 *  - FDVT_ioctl (0xffffff8008b2b828) ENQUE_REQ does
+	 *        puVar15 = m_ReqNum * 0x140;
+	 *        __arch_copy_from_user(g_FdvtEnqReq.frame_config,
+	 *                              m_pFdvtConfig, puVar15);
+	 *    i.e. the array element size is 0x140, not 0xD8.
+	 *  - config_fdvt_hw (0xffffff8008b2fa24) reads the header fields at the
+	 *    same offsets as this struct (param_1[0] -> FDVT reg 0x1012,
+	 *    param_1[2] -> 0x100e, param_1[3] -> 0x1016, param_1[4] -> 0x1016,
+	 *    param_1[6] == FD_MODE), so the 104 extra bytes are appended here
+	 *    and none of the fields used by this driver moves.
+	 *
+	 * Without the padding the kernel copied only 0xD8 bytes per element from
+	 * an array laid out with a 0x140 stride, so every element after the first
+	 * was garbage: FDVT then never raised frame_done, its CMDQ packet hung on
+	 * GCE event 177 ("fdvt_frame_done") and the HAL reported
+	 * "mHalFDVT: doHWFaceDetection FD HW driver timeout".
+	 */
+	unsigned int reserved_abi[26];
 };
 #define FDVT_Config struct fdvt_config
 
