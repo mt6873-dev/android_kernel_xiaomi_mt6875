@@ -10876,8 +10876,8 @@ irqreturn_t ISP_Irq_CAM(enum ISP_IRQ_TYPE_ENUM irq_module)
 	 * Status[module][DMA_INT].  Log both DMA interrupt groups plus their
 	 * enables and the accumulated status, once every 60 SOFs.
 	 */
-	if ((sof_count[module] % 60) == 0) {
-		LOG_NOTICE("DIAG cam%c sof%d int1_st=0x%x int2_st=0x%x int2_stx=0x%x int2_en=0x%x int3_st=0x%x int3_en=0x%x int4_st=0x%x int5_st=0x%x acc_sig=0x%x acc_dma=0x%x\n",
+	if ((sof_count[module] % 60) == 0 || (DmaStatus != 0)) {
+		LOG_NOTICE("DIAG cam%c sof%d int1_st=0x%x int2_st=0x%x int2_stx=0x%x int2_en=0x%x int3_st=0x%x int3_en=0x%x int4_st=0x%x int5_st=0x%x dma_en=0x%x acc_sig=0x%x acc_dma=0x%x\n",
 			'A' + cardinalNum, sof_count[module],
 			IrqStatus, DmaStatus,
 			ISP_RD32(CAM_REG_CTL_RAW_INT2_STATUSX(reg_module)),
@@ -10885,6 +10885,7 @@ irqreturn_t ISP_Irq_CAM(enum ISP_IRQ_TYPE_ENUM irq_module)
 			dmaiStatus,
 			ISP_RD32(CAM_REG_CTL_RAW_INT3_EN(reg_module)),
 			dropStatus, WarnStatus,
+			ISP_RD32(CAM_REG_CTL_DMA_EN(reg_module)),
 			IspInfo.IrqInfo.Status[module][SIGNAL_INT][0],
 			IspInfo.IrqInfo.Status[module][DMA_INT][0]);
 	}
