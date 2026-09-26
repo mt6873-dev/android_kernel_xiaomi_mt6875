@@ -149,7 +149,7 @@ static inline void bio_set_dev(struct bio *bio, struct block_device *bdev)
 
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
-#define CURRENT_TIME_SEC	timespec_trunc(current_kernel_time(), NSEC_PER_SEC)
+#define CURRENT_TIME_SEC	current_kernel_time64()
 #endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
@@ -2368,7 +2368,7 @@ static int __sdfat_create(struct inode *dir, struct dentry *dentry)
 {
 	struct super_block *sb = dir->i_sb;
 	struct inode *inode;
-	struct timespec ts;
+	struct timespec64 ts;
 	FILE_ID_T fid;
 	loff_t i_pos;
 	int err;
@@ -2529,7 +2529,7 @@ static int sdfat_unlink(struct inode *dir, struct dentry *dentry)
 {
 	struct inode *inode = dentry->d_inode;
 	struct super_block *sb = dir->i_sb;
-	struct timespec ts;
+	struct timespec64 ts;
 	int err;
 
 	__lock_super(sb);
@@ -2570,7 +2570,7 @@ static int sdfat_symlink(struct inode *dir, struct dentry *dentry, const char *t
 {
 	struct super_block *sb = dir->i_sb;
 	struct inode *inode;
-	struct timespec ts;
+	struct timespec64 ts;
 	FILE_ID_T fid;
 	loff_t i_pos;
 	int err;
@@ -2637,7 +2637,7 @@ static int __sdfat_mkdir(struct inode *dir, struct dentry *dentry)
 {
 	struct super_block *sb = dir->i_sb;
 	struct inode *inode;
-	struct timespec ts;
+	struct timespec64 ts;
 	FILE_ID_T fid;
 	loff_t i_pos;
 	int err;
@@ -2688,7 +2688,7 @@ static int sdfat_rmdir(struct inode *dir, struct dentry *dentry)
 {
 	struct inode *inode = dentry->d_inode;
 	struct super_block *sb = dir->i_sb;
-	struct timespec ts;
+	struct timespec64 ts;
 	int err;
 
 	__lock_super(sb);
@@ -2729,7 +2729,7 @@ static int __sdfat_rename(struct inode *old_dir, struct dentry *old_dentry,
 {
 	struct inode *old_inode, *new_inode;
 	struct super_block *sb = old_dir->i_sb;
-	struct timespec ts;
+	struct timespec64 ts;
 	loff_t i_pos;
 	int err;
 
@@ -4793,7 +4793,7 @@ static int sdfat_read_root(struct inode *inode)
 {
 	struct super_block *sb = inode->i_sb;
 	struct sdfat_sb_info *sbi = SDFAT_SB(sb);
-	struct timespec ts;
+	struct timespec64 ts;
 	FS_INFO_T *fsi = &(sbi->fsi);
 	DIR_ENTRY_T info;
 

@@ -382,3 +382,6 @@
 545	x32	execveat		compat_sys_execveat/ptregs
 546	x32	preadv2			compat_sys_preadv64v2
 547	x32	pwritev2		compat_sys_pwritev64v2
+
+436	common	close_range		sys_close_range
+441	common	epoll_pwait2		sys_epoll_pwait2

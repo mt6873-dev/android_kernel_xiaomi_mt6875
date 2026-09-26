@@ -8,6 +8,32 @@
 #include <linux/list.h>
 #include <linux/refcount.h>
 
+#define TRACE_CGROUP_PATH_LEN 1024
+extern spinlock_t trace_cgroup_path_lock;
+extern char trace_cgroup_path[TRACE_CGROUP_PATH_LEN];
+
+/*
+ * cgroup_path() takes a spin lock. It is good practice not to take
+ * spin locks within trace point handlers, as they are mostly hidden
+ * from normal view. As cgroup_path() can take the kernfs_rename_lock
+ * spin lock, it is best to not call that function from the trace event
+ * handler.
+ *
+ * Note: trace_cgroup_##type##_enabled() is a static branch that will only
+ *       be set when the trace event is enabled.
+ */
+#define TRACE_CGROUP_PATH(type, cgrp, ...)				\
+	do {								\
+		if (trace_cgroup_##type##_enabled()) {			\
+			spin_lock(&trace_cgroup_path_lock);		\
+			cgroup_path(cgrp, trace_cgroup_path,		\
+				    TRACE_CGROUP_PATH_LEN);		\
+			trace_cgroup_##type(cgrp, trace_cgroup_path,	\
+					    ##__VA_ARGS__);		\
+			spin_unlock(&trace_cgroup_path_lock);		\
+		}							\
+	} while (0)
+
 struct cgroup_pidlist;
 
 struct cgroup_file_ctx {
@@ -237,5 +263,7 @@ void cgroup1_check_for_release(struct cgroup *cgrp);
 struct dentry *cgroup1_mount(struct file_system_type *fs_type, int flags,
 			     void *data, unsigned long magic,
 			     struct cgroup_namespace *ns);
+
+int __cgroup_task_count(const struct cgroup *cgrp);
 
 #endif /* __CGROUP_INTERNAL_H */
