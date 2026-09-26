@@ -118,6 +118,14 @@
 #define SMI_LARB_MMU_CTL (1)
 /*#define ENABLE_WAITIRQ_LOG*/ /* wait irq debug logs */
 /*#define ENABLE_STT_IRQ_LOG*/ /*show STT irq debug logs */
+/*******************************************************************************
+ * TEMP DIAG: temporary instrumentation to find out why the 3A statistics
+ * never complete (AAO_DONE_ST 0x100 / TSFSO_DONE_ST 0x80 missing from
+ * Status[CAM_x][DMA_INT]) which leaves AE/AWB unable to converge and makes
+ * the preview blow out to white after a video->photo mode switch.
+ * Set ISP_TEMP_DIAG to 0 (or delete the guarded blocks) once collected.
+ ******************************************************************************/
+#define ISP_TEMP_DIAG (1)
 
 #define Lafi_WAM_CQ_ERR (0)
 /* Queue timestamp for deque. Update when non-drop frame @SOF */
@@ -10861,6 +10869,26 @@ irqreturn_t ISP_Irq_CAM(enum ISP_IRQ_TYPE_ENUM irq_module)
 	dropStatus = ISP_RD32(CAM_REG_CTL_RAW_INT4_STATUS(reg_module));
 
 	spin_unlock(&(IspInfo.SpinLockIrq[module]));
+
+#if ISP_TEMP_DIAG
+	/* TEMP DIAG: AE/AWB never converge because the 3A statistics never
+	 * arrive - AAO_DONE_ST(0x100)/TSFSO_DONE_ST(0x80) are missing from
+	 * Status[module][DMA_INT].  Log both DMA interrupt groups plus their
+	 * enables and the accumulated status, once every 60 SOFs.
+	 */
+	if ((sof_count[module] % 60) == 0) {
+		LOG_NOTICE("DIAG cam%c sof%d int1_st=0x%x int2_st=0x%x int2_stx=0x%x int2_en=0x%x int3_st=0x%x int3_en=0x%x int4_st=0x%x int5_st=0x%x acc_sig=0x%x acc_dma=0x%x\n",
+			'A' + cardinalNum, sof_count[module],
+			IrqStatus, DmaStatus,
+			ISP_RD32(CAM_REG_CTL_RAW_INT2_STATUSX(reg_module)),
+			ISP_RD32(CAM_REG_CTL_RAW_INT2_EN(reg_module)),
+			dmaiStatus,
+			ISP_RD32(CAM_REG_CTL_RAW_INT3_EN(reg_module)),
+			dropStatus, WarnStatus,
+			IspInfo.IrqInfo.Status[module][SIGNAL_INT][0],
+			IspInfo.IrqInfo.Status[module][DMA_INT][0]);
+	}
+#endif
 
 	ErrStatus = IrqStatus & IspInfo.IrqInfo.ErrMask[module][SIGNAL_INT];
 
