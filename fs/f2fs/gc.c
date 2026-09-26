@@ -1070,6 +1070,8 @@ next_step:
 				set_sbi_flag(sbi, SBI_NEED_FSCK);
 				continue;
 			}
+			if (special_file(inode->i_mode))
+				continue;
 
 			if (!down_write_trylock(
 				&F2FS_I(inode)->i_gc_rwsem[WRITE])) {
