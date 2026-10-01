@@ -471,6 +471,32 @@ struct DPE_Config {
 	unsigned int Dpe_is16BitMode;
 	struct DVS_Settings	Dpe_DVSSettings;
 	struct DVP_Settings	Dpe_DVPSettings;
+	/*
+	 * A12 official-kernel / HAL ABI pad.
+	 *
+	 * The official kernel (vmlinux_official.elf) has
+	 * sizeof(struct DPE_Config) == 0x264 (612); A11 has 0x1b0 (432).
+	 * Every member the official kernel actually parses sits exactly
+	 * 0x180 bytes after its A11 offset, e.g.
+	 *   Dpe_InBuf_SrcImg_Y_L : 0x150 -> 0x204
+	 *       (dpe_enque_cb   @ 0xffffff8008b0e678,
+	 *        DPE_Config_DVS @ 0xffffff8008b0e968)
+	 *   Dpe_OutBuf_WMF_FILT   : 0x190 -> 0x244
+	 *       (DPE_Config_DVP @ 0xffffff8008b0ed3c)
+	 * Evidence for 0x264:
+	 *   DPE_ioctl ENQUE_REQ  : __arch_copy_from_user(..., m_ReqNum * 0x264)
+	 *   dpe_enque_cb         : memcpy(..., cfg + idx * 0x264, 0x264)
+	 *   request ring element : 0x1cf8 = 12 * 0x264 + 0x48
+	 *   A12 HAL libmtkcam.featurepipe.depthmap.so @a9a48:
+	 *                          memset(cfg, 0, 0x264)
+	 * DVS_Settings (0x008..0x0d3) and DVP_Settings (0x0d4..0x14f) keep their
+	 * A11 layout -- the official kernel reads DVP_Settings members
+	 * mainEyeSel/Y_only/TuningBuf_CORE/SubModule_EN/disp_guide_en/frmWidth/
+	 * frmHeight/engStart_x/engStart_y at exactly the A11 offsets -- and it
+	 * never reads 0x150..0x203, so the pad goes right here.
+	 * 0x1b0 + 0xb4 = 0x264, which keeps Dpe_feedback at the tail.
+	 */
+	unsigned int reserved_abi_0x150[45];
 	unsigned int Dpe_InBuf_SrcImg_Y_L;
 	unsigned int Dpe_InBuf_SrcImg_Y_R;
 	unsigned int Dpe_InBuf_SrcImg_Y;
