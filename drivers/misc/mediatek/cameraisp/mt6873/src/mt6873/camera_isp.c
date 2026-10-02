@@ -11742,6 +11742,27 @@ LB_CAM_SOF_IGNORE:
 	}
 	wake_up_interruptible(&IspInfo.WaitQueueHead[module]);
 
+	/* TEMP DIAG (delete after one capture; no logic change).
+	 * acc_dma is Status[module][DMA_INT][0] -- the exact slot ISP_WaitIrq()
+	 * reads on behalf of AAOBufThread_1. Compare it with the
+	 * "ERRRR WaitIrq ... Status(0x...)" line printed by that thread when
+	 * it times out waiting AAO_DONE_ST (bit8). If acc_dma has bit8 here but
+	 * the wait still times out, the bit is being consumed/cleared on the
+	 * HAL side; if acc_dma never has bit8, the hardware stopped raising it.
+	 */
+#define ISP_TEMP_DIAG_AAO 1
+#ifdef ISP_TEMP_DIAG_AAO
+	if (DmaStatus & (AAO_DONE_ST | TSFSO_DONE_ST)) {
+		LOG_NOTICE(
+			"DIAG AAO cam%c sof%d Dma=0x%x acc_dma=0x%x acc_sig=0x%x dma_en=0x%x int2_en=0x%x\n",
+			'A' + cardinalNum, sof_count[module], DmaStatus,
+			IspInfo.IrqInfo.Status[module][DMA_INT][0],
+			IspInfo.IrqInfo.Status[module][SIGNAL_INT][0],
+			ISP_RD32(CAM_REG_CTL_DMA_EN(reg_module)),
+			ISP_RD32(CAM_REG_CTL_RAW_INT2_EN(reg_module)));
+	}
+#endif
+
 	/* dump log, use workq */
 	if ((IrqStatus & (SOF_INT_ST | SW_PASS1_DON_ST | VS_INT_ST)) ||
 		ErrStatus) {
