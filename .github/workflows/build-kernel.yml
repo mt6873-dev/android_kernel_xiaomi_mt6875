@@ -3,6 +3,19 @@ on:
   push:
     branches: [ lineage-20.0 ]
   workflow_dispatch:
+    inputs:
+      enable_ksu:
+        description: "集成 KernelSU (ReSukiSU)"
+        type: boolean
+        default: true
+      kernel_config:
+        description: "内核 defconfig (对应 vendor/<name>_user_defconfig)"
+        type: choice
+        options:
+          - bomb
+          - cezanne
+          - atom
+        default: bomb
 
 jobs:
   build:
@@ -15,6 +28,9 @@ jobs:
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
       CI: "false"
+      # push 触发时 inputs 为空, 用默认值兜底; workflow_dispatch 时按选择走
+      ENABLE_KSU: ${{ github.event.inputs.enable_ksu || 'true' }}
+      KERNEL_CONFIG: ${{ github.event.inputs.kernel_config || 'bomb' }}
     steps:
     - uses: actions/checkout@v4
 
@@ -62,12 +78,19 @@ jobs:
         key: build-kernel-bomb
         max-size: 1G
 
+    - name: Setup KernelSU (ReSukiSU)
+      if: env.ENABLE_KSU == 'true'
+      run: |
+        echo "KernelSU: 启用 (ReSukiSU setup.sh)"
+        curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
+
     - name: Build kernel
       run: |
+        echo "KERNEL_CONFIG=vendor/${KERNEL_CONFIG}_user_defconfig"
         export PATH=$GITHUB_WORKSPACE/clang-aosp/google_clang/clang-r383902/bin:$GITHUB_WORKSPACE/clang-aosp/google_gcc/aarch64-linux-android-4.9/bin:$GITHUB_WORKSPACE/clang-aosp/google_gcc/arm-linux-androideabi-4.9/bin:$PATH
         export KBUILD_BUILD_HOST=Github-Action
         export KBUILD_BUILD_USER=${{ github.actor }}
-        make -j1 LLVM=1 CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip O=out ARCH=arm64 CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- vendor/bomb_user_defconfig
+        make -j1 LLVM=1 CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip O=out ARCH=arm64 CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- vendor/${KERNEL_CONFIG}_user_defconfig
         make -j$(nproc --all) LLVM=1 CC="ccache clang" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip O=out ARCH=arm64 CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
     - name: Check output
