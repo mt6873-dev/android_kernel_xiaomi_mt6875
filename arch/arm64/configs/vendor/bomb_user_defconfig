@@ -533,19 +533,17 @@ CONFIG_WLAN_DRV_BUILD_IN=y
 #音量+键内核崩溃
 CONFIG_MTK_VOLUP_LONG_PRESS_PANIC=y
 # 官核有而我们缺失的选项（对齐 ABI + 功能）
-# 开启 LTO / CFI：vendor 模块（connfem / wmt_drv / bt_drv / wlan_drv_gen4m 等）
-# 是带 CFI 编译的，会引用内核提供的 __cfi_slowpath；关闭 CFI 会让这些模块
-# 全部报 Unknown symbol __cfi_slowpath 而无法加载。
-# LTO+CFI 会改变 struct module 布局，使 module_layout 的 CRC 与官核
-# (0x5C148880) 不一致，因此模块加载依靠 kernel/module.c 的 check_version()
-# 强制放行。
+# 关闭 LTO / CFI：开启后 fpsgo_v3（A12 版）与内核 LTO 符号解析冲突，
+# 导致 fpsgo_get_fps_fp / dram_ctl_update_dfrc_fps 等 undefined symbol。
+# CFI 依赖 LTO_CLANG，关掉 LTO_CLANG 后 THINLTO / CFI_CLANG /
+# CFI_CLANG_SHADOW 自动关闭。vendor 模块引用的 __cfi_slowpath 由
+# kernel/module.c 的 check_version() 强制放行处理。
 CONFIG_MODVERSIONS=y
-CONFIG_LTO=y
-CONFIG_LTO_CLANG=y
-CONFIG_THINLTO=y
-CONFIG_CFI=y
-CONFIG_CFI_CLANG=y
-CONFIG_CFI_CLANG_SHADOW=y
+CONFIG_LTO_NONE=y
+# CONFIG_LTO_CLANG is not set
+# CONFIG_THINLTO is not set
+# CONFIG_CFI_CLANG is not set
+# CONFIG_CFI_CLANG_SHADOW is not set
 CONFIG_CRYPTO_CHACHA20=y
 CONFIG_CRYPTO_CHACHA20POLY1305=y
 CONFIG_CRYPTO_POLY1305=y
