@@ -1,7 +1,7 @@
 name: Build Kernel
 on:
   push:
-    branches: [ lineage-20.0 ]
+    branches: [ SukiSU-Ultra ]
   workflow_dispatch:
     inputs:
       enable_ksu:
