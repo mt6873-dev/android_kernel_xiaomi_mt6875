@@ -2691,8 +2691,8 @@ static int aw8624_haptics_upload_effect(struct input_dev *dev,
 		mutex_lock(&aw8624->lock);
 	}
 	/* Stock semantics (aw8624_haptics_upload_effect @0xffffff8008ee71c8):
-	 * FF_PERIODIC (0x52) carries the timed constant vibration with
-	 * replay.length; FF_CONSTANT (0x51) carries the effect request in
+	 * FF_PERIODIC (0x51) carries the timed constant vibration with
+	 * replay.length; FF_CONSTANT (0x52) carries the effect request in
 	 * u.periodic.custom_data.  The Xiaomi vibrator HAL relies on this
 	 * swapped ABI, keep it identical to the stock kernel.
 	 */
@@ -2795,8 +2795,8 @@ static int aw8624_haptics_playback(struct input_dev *dev, int effect_id,
 	hrtimer_cancel(&aw8624->timer);
 
 	/* Stock dispatch (aw8624_haptics_playback @0xffffff8008ee7428):
-	 * FF_PERIODIC(0x52)+RAM_LOOP(3) / FF_CONSTANT(0x51)+RAM(0) play the
-	 * vibrator work; FF_CONSTANT(0x51)+RTP(2) queues the rtp work and a
+	 * FF_PERIODIC(0x51)+RAM_LOOP(3) / FF_CONSTANT(0x52)+RAM(0) play the
+	 * vibrator work; FF_CONSTANT(0x52)+RTP(2) queues the rtp work and a
 	 * stop request (val==0) forces the rtp loop to exit.
 	 */
 	if (aw8624->effect_type == FF_PERIODIC &&
