@@ -444,7 +444,13 @@ static int tcpc_device_irq_enable(struct tcpc_device *tcpc)
 	}
 
 	tcpci_lock_typec(tcpc);
-	ret = tcpc_typec_init(tcpc, tcpc->desc.role_def + 1);
+	/* official kernel passes desc.role_def as-is (valid typec role enum
+	 * is TYPEC_ROLE_SNK..TYPEC_ROLE_TRY_SNK, i.e. 1..5).  The old "+1"
+	 * pushed TYPEC_ROLE_TRY_SNK(5) to 6 and tcpc_typec_init() rejected
+	 * it ("Wrong TypeC-Role: 6"), killing the whole typec/PD state
+	 * machine so charger type/online never updated.
+	 */
+	ret = tcpc_typec_init(tcpc, tcpc->desc.role_def);
 	tcpci_unlock_typec(tcpc);
 	if (ret < 0) {
 		pr_err("%s : tcpc typec init fail\n", __func__);

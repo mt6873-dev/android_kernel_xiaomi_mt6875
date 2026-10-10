@@ -2735,7 +2735,11 @@ int tcpc_typec_init(struct tcpc_device *tcpc_dev, uint8_t typec_role)
 {
 	int ret = 0;
 
-	if (typec_role >= TYPEC_ROLE_NR) {
+	/* official kernel accepts only (typec_role - 1) < 5, i.e. reject
+	 * TYPEC_ROLE_UNKNOWN and anything >= TYPEC_ROLE_NR.
+	 */
+	if (typec_role == TYPEC_ROLE_UNKNOWN ||
+		typec_role >= TYPEC_ROLE_NR) {
 		TYPEC_INFO("Wrong TypeC-Role: %d\r\n", typec_role);
 		return -EINVAL;
 	}
