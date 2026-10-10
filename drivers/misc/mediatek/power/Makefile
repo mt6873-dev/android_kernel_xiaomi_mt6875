@@ -10,7 +10,18 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU General Public License for more details.
 #
+# battery_bomb's struct mtk_battery adds bh_data/show_ag/bat_health/
+# prev_batt_fcc/prev_batt_remaining_capacity/soc_raw before soc/ui_soc.
+# mtk_battery_intf.c dereferences get_mtk_battery()->soc/ui_soc (gm is
+# compiled with battery_bomb's layout), so its include path must point
+# at the same battery_* dir that is actually built (see
+# drivers/power/supply/mediatek/Makefile), otherwise it reads the wrong
+# struct offsets and battery_get_soc()/battery_get_uisoc() return 0.
+ifeq ($(CONFIG_MTK_CHARGER_BOMB),y)
+subdir-ccflags-y += -I$(srctree)/drivers/power/supply/mediatek/battery_bomb
+else
 subdir-ccflags-y += -I$(srctree)/drivers/power/supply/mediatek/battery
+endif
 subdir-ccflags-y += -I$(srctree)/drivers/power/supply/mediatek/charger
 subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include
 subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/typec/tcpc/inc
