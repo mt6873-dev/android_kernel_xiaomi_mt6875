@@ -8017,6 +8017,37 @@ static const struct regmap_config mt6359_regmap = {
 };
 #endif
 
+/* Aligned with the stock kernel (vmlinux_official.elf,
+ * mt6359_platform_driver_probe @0xffffff800916b348):
+ *   of_property_read_variable_u32_array(np, "mediatek,mic-type", buf, 3, 0)
+ *   with a hard minimum of 3 entries and no upper bound; the first three
+ *   values land in mux_select[MUX_MIC_TYPE_0..2].  Any failure stores
+ *   {3,3,3}, i.e. MIC_TYPE_MUX_DCC ("default DCC" in the stock log).
+ */
+static void mt6359_parse_mic_type(struct mt6359_priv *priv)
+{
+	/* Stock reads min=3/unbounded into a 3-word buffer; keep headroom. */
+	u32 mic_type[12];
+	int ret, i;
+
+	ret = of_property_read_variable_u32_array(priv->dev->of_node,
+						  "mediatek,mic-type", mic_type,
+						  3, 0);
+	if (ret) {
+		for (i = 0; i < 3; i++)
+			mic_type[i] = MIC_TYPE_MUX_DCC;
+		dev_info(priv->dev,
+			 "%s() failed to read mic-type, default DCC\n",
+			 "mt6359_parse_dt");
+	}
+	for (i = 0; i < 3; i++)
+		priv->mux_select[MUX_MIC_TYPE_0 + i] = mic_type[i];
+	dev_info(priv->dev, "mic types %u/%u/%u\n",
+		 priv->mux_select[MUX_MIC_TYPE_0],
+		 priv->mux_select[MUX_MIC_TYPE_1],
+		 priv->mux_select[MUX_MIC_TYPE_2]);
+}
+
 static int mt6359_platform_driver_probe(struct platform_device *pdev)
 {
 	struct mt6359_priv *priv;
@@ -8050,6 +8081,8 @@ static int mt6359_platform_driver_probe(struct platform_device *pdev)
 #endif
 	if (IS_ERR(priv->regmap))
 		return PTR_ERR(priv->regmap);
+
+	mt6359_parse_mic_type(priv);
 
 #ifdef CONFIG_DEBUG_FS
 	/* create debugfs file */
