@@ -80,7 +80,14 @@ static struct mtk_drm_helper help_info[] = {
 	{MTK_DRM_OPT_SF_PF, 0, "MTK_DRM_OPT_SF_PF"},
 	{MTK_DRM_OPT_PRIM_DUAL_PIPE, 0, "MTK_DRM_OPT_PRIM_DUAL_PIPE"},
 	{MTK_DRM_OPT_DYN_MIPI_CHANGE, 0, "MTK_DRM_OPT_DYN_MIPI_CHANGE"},
-	{MTK_DRM_OPT_PQ_34_COLOR_MATRIX, 0, "MTK_DRM_OPT_PQ_34_COLOR_MATRIX"},
+	/* PQ 3x4 color-matrix capability bit (drm_get_display_caps orr #0x100).
+	 * The stock DT helper-name list (dispsys_config@14000000, 39 entries,
+	 * last = MTK_DRM_OPT_SF_PF) does NOT contain this name, so both
+	 * kernels fall back to the table default. Stock defaults to 1
+	 * (mtkfb.txt: Option[42] MTK_DRM_OPT_PQ_34_COLOR_MATRIX = 1); A11 had
+	 * 0 here, disabling the color-matrix path and washing out the picture
+	 * (preview/capture look blown out white in video mode). */
+	{MTK_DRM_OPT_PQ_34_COLOR_MATRIX, 1, "MTK_DRM_OPT_PQ_34_COLOR_MATRIX"},
 };
 
 static const char *mtk_drm_helper_opt_spy(struct mtk_drm_helper *helper_opt,
