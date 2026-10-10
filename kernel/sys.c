@@ -594,8 +594,8 @@ error:
 }
 
 
-#ifdef CONFIG_KSU_MANUAL_HOOK
-extern int ksu_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid);
+#ifdef CONFIG_KSU
+extern int ksu_handle_umount(uid_t old_uid, uid_t new_uid);
 #endif
 
 /*
@@ -610,8 +610,8 @@ SYSCALL_DEFINE3(setresuid, uid_t, ruid, uid_t, euid, uid_t, suid)
 	int retval;
 	kuid_t kruid, keuid, ksuid;
 
-#ifdef CONFIG_KSU_MANUAL_HOOK
-	(void)ksu_handle_setresuid(ruid, euid, suid);
+#ifdef CONFIG_KSU
+	ksu_handle_umount(ksuid.val, keuid.val);
 #endif
 
 	kruid = make_kuid(ns, ruid);
