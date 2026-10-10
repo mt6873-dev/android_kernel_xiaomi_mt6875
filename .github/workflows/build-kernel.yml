@@ -85,6 +85,22 @@ jobs:
         echo "KernelSU: 启用 (SukiSU-Ultra, builtin 分支 / 手动钩子)"
         curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
 
+    - name: Patch KernelSU for Linux 4.14 compat
+      if: env.ENABLE_KSU == 'true'
+      run: |
+        set -e
+        KSU=KernelSU/kernel
+        # 1) fallthrough keyword only exists on 5.x; comment it out for 4.14
+        sed -i 's|\bfallthrough;|/* fallthrough */|' $KSU/policy/allowlist.c
+        grep -qF '/* fallthrough */' $KSU/policy/allowlist.c
+        # 2) USER_ARG_NULL is a pointer but ksu_sulog_capture() takes it by value
+        sed -i 's|#define USER_ARG_NULL user_arg_null_ptr()|#define USER_ARG_NULL (*user_arg_null_ptr())|' $KSU/sulog/event.c
+        grep -qF '#define USER_ARG_NULL (*user_arg_null_ptr())' $KSU/sulog/event.c
+        # 3) ksu_selinux_hide_* only exist on 5.10+; add no-op stubs for older kernels
+        sed -i 's|#endif // __KSU_H_KERNEL_INCLUDES|#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)\nstatic inline void ksu_selinux_hide_handle_post_fs_data(void) { }\nstatic inline void ksu_selinux_hide_handle_second_stage(void) { }\n#endif\n\n#endif // __KSU_H_KERNEL_INCLUDES|' $KSU/kernel_includes.h
+        grep -qF 'ksu_selinux_hide_handle_post_fs_data(void) { }' $KSU/kernel_includes.h
+        echo "KernelSU 4.14 compat patch applied"
+
     - name: Build kernel
       run: |
         echo "KERNEL_CONFIG=vendor/${KERNEL_CONFIG}_user_defconfig"
