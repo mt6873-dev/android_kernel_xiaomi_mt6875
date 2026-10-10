@@ -2690,26 +2690,37 @@ static int aw8624_haptics_upload_effect(struct input_dev *dev,
 		}
 		mutex_lock(&aw8624->lock);
 	}
-	if (aw8624->effect_type == FF_CONSTANT) {
-		VIB_DEBUG("effect_type is  FF_CONSTANT! \n");
+	/* Stock semantics (aw8624_haptics_upload_effect @0xffffff8008ee71c8):
+	 * FF_PERIODIC (0x52) carries the timed constant vibration with
+	 * replay.length; FF_CONSTANT (0x51) carries the effect request in
+	 * u.periodic.custom_data.  The Xiaomi vibrator HAL relies on this
+	 * swapped ABI, keep it identical to the stock kernel.
+	 */
+	if (aw8624->effect_type == FF_PERIODIC) {
+		VIB_DEBUG("effect_type is  FF_PERIODIC (timed)! \n");
 		/*cont mode set duration */
 		aw8624->duration = effect->replay.length;
 		aw8624->activate_mode = AW8624_HAPTIC_ACTIVATE_RAM_LOOP_MODE;
 		aw8624->effect_id = aw8624->info.effect_id_boundary;
 
-	} else if (aw8624->effect_type == FF_PERIODIC) {
+	} else if (aw8624->effect_type == FF_CONSTANT) {
 		if (aw8624->effects_count == 0) {
 			mutex_unlock(&aw8624->lock);
 			return -EINVAL;
 		}
 
-		VIB_DEBUG("effect_type is  FF_PERIODIC! \n");
+		VIB_DEBUG("effect_type is  FF_CONSTANT (effect)! \n");
 		if (copy_from_user(data, effect->u.periodic.custom_data,
 				   sizeof(s16) * CUSTOM_DATA_LEN)) {
 			mutex_unlock(&aw8624->lock);
 			return -EFAULT;
 		}
 
+		/* Stock maps MTK effect id 521 to slot 21
+		 * (aw8624_haptics_upload_effect @0xffffff8008ee72a0).
+		 */
+		if (data[0] == 0x209)
+			data[0] = 0x15;
 		aw8624->effect_id = data[0];
 		VIB_DEBUG("aw8624->effect_id =%d \n", aw8624->effect_id);
 		play->vmax_mv = effect->u.periodic.magnitude;	/*vmax level */
@@ -2730,7 +2741,7 @@ static int aw8624_haptics_upload_effect(struct input_dev *dev,
 			    ("%s aw8624->effect_id=%d , aw8624->activate_mode = %d\n",
 			     __func__, aw8624->effect_id,
 			     aw8624->activate_mode);
-			data[1] = aw8624->predefined[aw8624->effect_id].play_rate_us / 1000000;	/*second data */
+			data[1] = 0;	/*second data (stock writes 0) */
 			data[2] = aw8624->predefined[aw8624->effect_id].play_rate_us / 1000;	/*millisecond data */
 			VIB_DEBUG
 			    ("aw8624->predefined[aw8624->effect_id].play_rate_us/1000 = %d\n",
@@ -2783,17 +2794,22 @@ static int aw8624_haptics_playback(struct input_dev *dev, int effect_id,
 		aw8624->state = 0;
 	hrtimer_cancel(&aw8624->timer);
 
-	if (aw8624->effect_type == FF_CONSTANT &&
+	/* Stock dispatch (aw8624_haptics_playback @0xffffff8008ee7428):
+	 * FF_PERIODIC(0x52)+RAM_LOOP(3) / FF_CONSTANT(0x51)+RAM(0) play the
+	 * vibrator work; FF_CONSTANT(0x51)+RTP(2) queues the rtp work and a
+	 * stop request (val==0) forces the rtp loop to exit.
+	 */
+	if (aw8624->effect_type == FF_PERIODIC &&
 	    aw8624->activate_mode == AW8624_HAPTIC_ACTIVATE_RAM_LOOP_MODE) {
 		VIB_DEBUG("enter cont_mode \n");
 		//schedule_work(&aw8624->vibrator_work);
 		queue_work(aw8624->work_queue, &aw8624->vibrator_work);
-	} else if (aw8624->effect_type == FF_PERIODIC &&
+	} else if (aw8624->effect_type == FF_CONSTANT &&
 		   aw8624->activate_mode == AW8624_HAPTIC_ACTIVATE_RAM_MODE) {
 		VIB_DEBUG("enter  ram_mode\n");
 		//schedule_work(&aw8624->vibrator_work)
 		queue_work(aw8624->work_queue, &aw8624->vibrator_work);;
-	} else if (aw8624->effect_type == FF_PERIODIC &&
+	} else if (aw8624->effect_type == FF_CONSTANT &&
 		   aw8624->activate_mode == AW8624_HAPTIC_ACTIVATE_RTP_MODE) {
 		VIB_DEBUG("enter  rtp_mode\n");
 		//schedule_work(&aw8624->rtp_work);
