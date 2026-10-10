@@ -5,9 +5,16 @@ on:
   workflow_dispatch:
     inputs:
       enable_ksu:
-        description: "集成 KernelSU (ReSukiSU)"
+        description: "是否集成 KernelSU"
         type: boolean
         default: true
+      ksu_variant:
+        description: "KernelSU 变体 (SukiSU=main/kprobes; ReSukiSU=main+手动钩子)"
+        type: choice
+        options:
+          - sukiSU
+          - resukiSU
+        default: sukiSU
       kernel_config:
         description: "内核 defconfig (对应 vendor/<name>_user_defconfig)"
         type: choice
@@ -30,6 +37,7 @@ jobs:
       CI: "false"
       # push 触发时 inputs 为空, 用默认值兜底; workflow_dispatch 时按选择走
       ENABLE_KSU: ${{ github.event.inputs.enable_ksu || 'true' }}
+      KSU_VARIANT: ${{ github.event.inputs.ksu_variant || 'sukiSU' }}
       KERNEL_CONFIG: ${{ github.event.inputs.kernel_config || 'bomb' }}
     steps:
     - uses: actions/checkout@v4
@@ -78,11 +86,18 @@ jobs:
         key: build-kernel-bomb
         max-size: 1G
 
-    - name: Setup KernelSU (ReSukiSU)
+    - name: Setup KernelSU
       if: env.ENABLE_KSU == 'true'
       run: |
-        echo "KernelSU: 启用 (ReSukiSU setup.sh)"
-        curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
+        set -e
+        echo "KernelSU variant: ${KSU_VARIANT}"
+        if [ "${KSU_VARIANT}" = "resukiSU" ]; then
+          echo "KernelSU: 启用 (ReSukiSU, main 分支 + 手动钩子)"
+          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
+        else
+          echo "KernelSU: 启用 (SukiSU-Ultra, main 分支 / kprobes)"
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
+        fi
 
     - name: Build kernel
       run: |
@@ -91,6 +106,13 @@ jobs:
         export KBUILD_BUILD_HOST=Github-Action
         export KBUILD_BUILD_USER=${{ github.actor }}
         make -j1 LLVM=1 CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip O=out ARCH=arm64 CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- vendor/${KERNEL_CONFIG}_user_defconfig
+        # ReSukiSU 依赖内核源码里的手动钩子; defconfig 默认未开, 此处按变体打开
+        if [ "${KSU_VARIANT}" = "resukiSU" ]; then
+          scripts/config --file out/.config --enable KSU_MANUAL_HOOK
+          scripts/config --file out/.config --enable KSU
+          make -j1 LLVM=1 CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip O=out ARCH=arm64 CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- olddefconfig
+          echo "CONFIG_KSU_MANUAL_HOOK=y 已启用 (ReSukiSU 手动钩子)"
+        fi
         make -j$(nproc --all) LLVM=1 CC="ccache clang" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip O=out ARCH=arm64 CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
     - name: Check output
