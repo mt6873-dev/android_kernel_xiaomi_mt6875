@@ -1470,7 +1470,20 @@ static signed int config_fdvt_hw(struct fdvt_config *basic_config)
 	if (basic_config->FD_MODE == 0) {
 		cmdq_pkt_write(pkt, NULL, FDVT_ENABLE_HW, 0x00000111,
 			       CMDQ_REG_MASK);
-		cmdq_pkt_write(pkt, NULL, FDVT_LOOP_HW, 0x00006002,
+		/* stock config_fdvt_hw @0xffffff8008b2fa24 (FD_MODE==0) computes
+		 * LOOP from cfg instead of hardcoding:
+		 *   stage1: (cfg[0xf]-1) | (cfg[0xe]<<8)   stage2: cfg[0xf]<<8
+		 * cfg[0xe]/[0xf] = offset 0x38/0x3c = FDVT_METADATA_TO_GCE words
+		 * (named ImgSrcY/ImgSrcUV_Handler here; stock uses them as loop
+		 * counters, name mapping UNVERIFIED). Fixed 0x6002/0x300 only
+		 * matched cfg=0x60/0x03; other HAL params stalled stage 2 (the
+		 * wfe(fdvt_frame_done) never fired -> CMDQ SW timeout -> AAO/3A
+		 * starvation -> preview stutter + blown highlights). */
+		cmdq_pkt_write(pkt, NULL, FDVT_LOOP_HW,
+			       ((basic_config->FDVT_METADATA_TO_GCE
+				 .ImgSrcUV_Handler - 1) |
+				(basic_config->FDVT_METADATA_TO_GCE
+				 .ImgSrcY_Handler << 8)),
 			       CMDQ_REG_MASK);
 		cmdq_pkt_write(pkt, NULL, FDVT_INT_EN_HW, 0x0, CMDQ_REG_MASK);
 		cmdq_pkt_write(pkt, NULL, FDVT_RS_CON_BASE_ADR_HW,
@@ -1491,7 +1504,11 @@ static signed int config_fdvt_hw(struct fdvt_config *basic_config)
 
 		cmdq_pkt_write(pkt, NULL, FDVT_ENABLE_HW, 0x00000100,
 			       CMDQ_REG_MASK);
-		cmdq_pkt_write(pkt, NULL, FDVT_LOOP_HW, 0x00000300,
+		/* stock config_fdvt_hw stage2: LOOP = cfg[0xf] << 8
+		 * (cfg[0xf] = offset 0x3c, see stage1 note above) */
+		cmdq_pkt_write(pkt, NULL, FDVT_LOOP_HW,
+			       (basic_config->FDVT_METADATA_TO_GCE
+				.ImgSrcUV_Handler << 8),
 			       CMDQ_REG_MASK);
 
 		cmdq_pkt_write(pkt, NULL, FDVT_INT_EN_HW, 0x1, CMDQ_REG_MASK);
@@ -1705,7 +1722,20 @@ static signed int config_secure_fdvt_hw(struct fdvt_config *basic_config)
 	if (basic_config->FD_MODE == 0) {
 		cmdq_pkt_write(pkt, NULL, FDVT_ENABLE_HW, 0x00000111,
 			       CMDQ_REG_MASK);
-		cmdq_pkt_write(pkt, NULL, FDVT_LOOP_HW, 0x00006002,
+		/* stock config_fdvt_hw @0xffffff8008b2fa24 (FD_MODE==0) computes
+		 * LOOP from cfg instead of hardcoding:
+		 *   stage1: (cfg[0xf]-1) | (cfg[0xe]<<8)   stage2: cfg[0xf]<<8
+		 * cfg[0xe]/[0xf] = offset 0x38/0x3c = FDVT_METADATA_TO_GCE words
+		 * (named ImgSrcY/ImgSrcUV_Handler here; stock uses them as loop
+		 * counters, name mapping UNVERIFIED). Fixed 0x6002/0x300 only
+		 * matched cfg=0x60/0x03; other HAL params stalled stage 2 (the
+		 * wfe(fdvt_frame_done) never fired -> CMDQ SW timeout -> AAO/3A
+		 * starvation -> preview stutter + blown highlights). */
+		cmdq_pkt_write(pkt, NULL, FDVT_LOOP_HW,
+			       ((basic_config->FDVT_METADATA_TO_GCE
+				 .ImgSrcUV_Handler - 1) |
+				(basic_config->FDVT_METADATA_TO_GCE
+				 .ImgSrcY_Handler << 8)),
 			       CMDQ_REG_MASK);
 		cmdq_pkt_write(pkt, NULL, FDVT_INT_EN_HW, 0x0, CMDQ_REG_MASK);
 		cmdq_sec_pkt_write_reg(pkt,
@@ -1739,7 +1769,11 @@ static signed int config_secure_fdvt_hw(struct fdvt_config *basic_config)
 
 		cmdq_pkt_write(pkt, NULL, FDVT_ENABLE_HW, 0x00000100,
 			       CMDQ_REG_MASK);
-		cmdq_pkt_write(pkt, NULL, FDVT_LOOP_HW, 0x00000300,
+		/* stock config_fdvt_hw stage2: LOOP = cfg[0xf] << 8
+		 * (cfg[0xf] = offset 0x3c, see stage1 note above) */
+		cmdq_pkt_write(pkt, NULL, FDVT_LOOP_HW,
+			       (basic_config->FDVT_METADATA_TO_GCE
+				.ImgSrcUV_Handler << 8),
 			       CMDQ_REG_MASK);
 
 		cmdq_pkt_write(pkt, NULL, FDVT_INT_EN_HW, 0x1, CMDQ_REG_MASK);
