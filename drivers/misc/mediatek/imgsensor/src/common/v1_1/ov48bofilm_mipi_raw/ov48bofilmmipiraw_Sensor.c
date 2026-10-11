@@ -1953,22 +1953,6 @@ static kal_uint32 feature_control(MSDK_SENSOR_FEATURE_ENUM feature_id,
 		set_shutter_frame_length((UINT16)(*feature_data),
 			(UINT16)(*(feature_data + 1)));
 		break;
-	case SENSOR_FEATURE_GET_SENSOR_PDAF_CAPACITY: {
-		/* Stock case 0xc11 (imgsensor feature_control
-		 * @0xffffff8008b4313c): grant capacity 1 when the queried
-		 * type (<6) matches the supported-type mask 0x27 (bits
-		 * 0/1/2/5), else 0.  Missing here made the HAL fall back
-		 * to contrast AF on the main sensor.
-		 */
-		unsigned int *pdaf_cap = (unsigned int *)feature_data;
-
-		if ((pdaf_cap[0] < 6) &&
-		    (((1UL << (pdaf_cap[0] & 0x3f)) & 0x27U) != 0))
-			pdaf_cap[1] = 1;
-		else
-			pdaf_cap[1] = 0;
-		break;
-	}
 	case SENSOR_FEATURE_SET_STREAMING_SUSPEND:
 		pr_debug("SENSOR_FEATURE_SET_STREAMING_SUSPEND\n");
 		streaming_control(KAL_FALSE);
