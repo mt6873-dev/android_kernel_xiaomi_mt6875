@@ -1445,6 +1445,20 @@ static kal_uint32 get_info(enum MSDK_SCENARIO_ID_ENUM scenario_id,
 		break;
 	}
 
+	/* Stock get_info (@0xffffff8009476a60) also fills pConfig (the
+	 * merged pInfo+pConfig buffer, pConfig at +0xd8): ImageMirror=2
+	 * (+0xd8), MetaMode=1 (+0xf8) plus target/pclk/line fields.  This
+	 * tree left pConfig untouched, so the A12 HAL read a zeroed config
+	 * (SensorMode stayed 0 -> AE pline/AAOmode layout mismatch -> AE
+	 * divergence and all-white preview).  Fill the semantics here.
+	 */
+	sensor_config_data->SensorImageMirror = 2;	/* stock +0xd8 */
+	sensor_config_data->MetaMode = 1;		/* stock +0xf8 */
+	sensor_config_data->DefaultPclk = imgsensor_info.pre.pclk;
+	sensor_config_data->Pixels = imgsensor_info.pre.grabwindow_width;
+	sensor_config_data->Lines = imgsensor_info.pre.grabwindow_height;
+	sensor_config_data->FrameLines = imgsensor_info.pre.framelength;
+
 	return ERROR_NONE;
 }	/*	get_info  */
 
