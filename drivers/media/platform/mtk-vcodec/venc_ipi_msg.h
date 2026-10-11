@@ -405,6 +405,15 @@ struct venc_vcu_config {
 	__u32 b_qp;
 	__u32 svp_mode;
 	__u32 tsvc;
+	/*
+	 * Stock (A12) struct venc_vcu_config is 0xD8 (216) bytes with 8
+	 * more u32 fields after tsvc (filled by stock venc_set_param from
+	 * enc_prm[0x94..0xC0]). Keep them as ABI padding so that every
+	 * following member of struct venc_vsi (list_free/venc/meta_*) lands
+	 * on the offsets the A12 vpud daemon expects (e.g. venc_bs_va at
+	 * vsi+1944 / 0x798 instead of 1912).
+	 */
+	__u32 reserved_abi[8];
 };
 
 /**
