@@ -1336,7 +1336,11 @@ int ccu_sw_hw_reset(void)
 	ccu_status = ccu_read_reg(ccu_base, CCU_ST);
 	LOG_INF_MUST("[%s] polling CCU halt(0x%08x)\n", __func__, ccu_status);
 	duration = 0;
-	while ((ccu_status & 0x100) != 0x100) {
+	/* Stock kernel polls CCU_ST bit12 (tbnz w19,#12 in ccu_sw_hw_reset
+	 * @0xffffff8008ca5560) for halt; bit8 here never matches on this SoC
+	 * and the poll burned its full 1ms timeout before resetting anyway.
+	 */
+	while ((ccu_status & 0x1000) != 0x1000) {
 		duration++;
 		if (duration > 1000) {
 			LOG_ERR("[%s] polling halt, 1ms timeout: (0x%08x)\n",
