@@ -191,6 +191,27 @@ static char aw8624_rtp_name[][AW8624_RTP_NAME_MAX] = {
 	{"aw8624_rtp_1.bin"},
 	{"aw8624_rtp_1.bin"},	//141
 	{"aw8624_rtp_1.bin"},
+	/* Stock table tail (vmlinux rodata @file offset 0x2232dc0, 137
+	 * entries, clamp upper bound 0x88=136): ids 143..153 have no
+	 * waveform (empty slots, request_firmware() rejects), 154..156 map
+	 * to the three waveforms below.  Without these entries this tree
+	 * clamped those ids to aw8624_rtp_1.bin and played the wrong
+	 * effect.
+	 */
+	{""},
+	{""},
+	{""},
+	{""},
+	{""},
+	{""},
+	{""},
+	{""},
+	{""},
+	{""},
+	{""},
+	{"154_Atlantis_RTP.bin"},
+	{"155_DigitalUniverse_RTP.bin"},
+	{"156_Reveries_RTP.bin"},
 };
 
 struct aw8624_container *aw8624_rtp;
