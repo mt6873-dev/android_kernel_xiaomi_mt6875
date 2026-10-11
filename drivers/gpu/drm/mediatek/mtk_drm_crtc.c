@@ -6759,18 +6759,6 @@ static void mtk_drm_crtc_hbm_fence(struct drm_crtc *crtc,
 	return;
 }
 
-/* Stock second-pkt callback (sf_cmdq_cb @0xffffff800885d45c path,
- * ghidra_disp_flush.txt): destroys the deferred pkt after its
- * wait_no_clear(STREAM_EOF) completes.
- */
-static void sf_cmdq_cb(struct cmdq_cb_data data)
-{
-	struct cmdq_pkt *pkt = data.data;
-
-	if (pkt)
-		cmdq_pkt_destroy(pkt);
-}
-
 static void mtk_drm_crtc_atomic_flush(struct drm_crtc *crtc,
 				      struct drm_crtc_state *old_crtc_state)
 {
@@ -6914,58 +6902,11 @@ static void mtk_drm_crtc_atomic_flush(struct drm_crtc *crtc,
 	/* This refcnt would be release in ddp_cmdq_cb */
 	mtk_atomic_state_get(old_crtc_state->state);
 	mtk_drm_crtc_lfr_update(crtc, cmdq_handle);
-	/* Stock (mtk_drm_crtc_atomic_flush @0xffffff800885d45c) clears
-	 * STREAM_EOF on the main pkt tail (append_command 0x8000 form) so the
-	 * deferred pkt below can wait on it: the present fence must not be
-	 * released until the frame actually leaves the panel. Condition
-	 * mirrors stock: SF_PF on && index==0 && pres fence valid.
-	 */
-	if (mtk_drm_helper_get_opt(priv->helper_opt, MTK_DRM_OPT_SF_PF) &&
-	    index == 0 &&
-	    state->prop_val[CRTC_PROP_PRES_FENCE_IDX] != (unsigned int)-1) {
-		cmdq_pkt_clear_event(cmdq_handle,
-			mtk_crtc->gce_obj.event[EVENT_STREAM_EOF]);
-		DDPPR_ERR("MTKDBG SF_PF clear STREAM_EOF idx=%u\n", index);
-	}
 #ifdef MTK_DRM_CMDQ_ASYNC
 	ret = mtk_crtc_gce_flush(crtc, ddp_cmdq_cb, cb_data, cmdq_handle);
 	if (ret) {
 		DDPPR_ERR("mtk_crtc_gce_flush failed!\n");
 		goto end;
-	}
-	/* Stock second pkt (append_command 0x8001 form -> write -> async
-	 * flush with sf_cmdq_cb): wait_no_clear(STREAM_EOF) then write
-	 * SUBTRACTOR_WHEN_FREE(pres_fence_idx). Without this gate SF can
-	 * recycle the buffer while OVL is still reading it (tearing/IOMMU
-	 * fault -> underflow -> visible corruption after screen-on).
-	 */
-	if (mtk_drm_helper_get_opt(priv->helper_opt, MTK_DRM_OPT_SF_PF) &&
-	    index == 0 &&
-	    state->prop_val[CRTC_PROP_PRES_FENCE_IDX] != (unsigned int)-1) {
-		struct cmdq_pkt *pkt2;
-		struct cmdq_pkt_buffer *cmdq_buf = &(mtk_crtc->gce_obj.buf);
-		unsigned int sub = 1; /* struct-align pass: exact stock value
-				       * comes from state+0x2a0; refined with
-				       * the mtk_release_present_fence step-3
-				       * (see MT6873-花屏-对齐官核-提示词.md).
-				       */
-
-		pkt2 = cmdq_pkt_create(mtk_crtc->gce_obj.client[CLIENT_CFG]);
-		if (pkt2) {
-			cmdq_pkt_wait_no_clear(pkt2,
-				mtk_crtc->gce_obj.event[EVENT_STREAM_EOF]);
-			cmdq_pkt_write(pkt2, mtk_crtc->gce_obj.base,
-				cmdq_buf->pa_base +
-				DISP_SLOT_SUBTRACTOR_WHEN_FREE(state->prop_val
-					[CRTC_PROP_PRES_FENCE_IDX]),
-				sub, ~0);
-			if (cmdq_pkt_flush_threaded(pkt2, sf_cmdq_cb,
-						    pkt2) < 0) {
-				DDPPR_ERR("MTKDBG SF_PF 2nd pkt flush fail\n");
-				cmdq_pkt_destroy(pkt2);
-			}
-			DDPPR_ERR("MTKDBG SF_PF second pkt idx=%u\n", index);
-		}
 	}
 	CRTC_MMP_MARK(index, atomic_flush, (unsigned long)cmdq_handle,
 			(unsigned long)cmdq_handle->cmd_buf_size);
