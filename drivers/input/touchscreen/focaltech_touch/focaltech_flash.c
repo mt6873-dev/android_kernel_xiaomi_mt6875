@@ -1539,6 +1539,14 @@ static void fts_fwupg_work(struct work_struct *work)
 	fts_esdcheck_switch(ENABLE);
 #endif
 #ifdef CONFIG_TOUCHSCREEN_FTS_FOD
+	/* The probe-time fw-upgrade flow (fts_fwupg_init -> reset in boot)
+	 * leaves the TP rebooting. With an empty fw file the upgrade is
+	 * skipped and nothing else waits for TP ready here, so the FOD reg
+	 * write below raced with the reboot and failed permanently, leaving
+	 * the TP FOD (0x26/BTN_INFO) reporting disabled -> fingerprint dead.
+	 * Wait for TP ready first, same as the auto-upgrade path provides.
+	 */
+	fts_wait_tp_to_valid(ts_data->client);
 	fts_fod_recovery(ts_data->client);
 #endif
 	fts_irq_enable();
