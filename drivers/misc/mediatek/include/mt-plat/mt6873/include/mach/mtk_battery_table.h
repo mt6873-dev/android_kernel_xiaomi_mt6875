@@ -53,18 +53,22 @@
 /*#define MTK_GET_BATTERY_ID_BY_GPIO*/
 
 /* Qmax for battery  */
+/* stock values (vmlinux_official.elf rodata @ 0xffffff800a2ba52c); the old
+ * numbers were placeholder data generated as q_max_h_current + 300 and made
+ * POWER_SUPPLY_PROP_CHARGE_COUNTER report only ~65% of the real capacity.
+ */
 int g_Q_MAX[MAX_TABLE][TOTAL_BATTERY_NUMBER] = {
 	/*bat1,   bat2,   bat3,    bat4*/
-	{ 2946, 2712, 2490, 1965},/*T0*/
-	{ 2796, 2851, 2468, 1984},/*T1*/
-	{ 2718, 2432, 2310, 1946},/*T2*/
-	{ 2535, 1991, 1858, 1873},/*T3*/
-	{ 2523, 1960, 1843, 1851},/*T4*/
-	{ 2211, 1652, 1533, 1541},/*T5*/
-	{ 2201, 1642, 1523, 1531},/*T6*/
-	{ 2191, 1632, 1513, 1521},/*T7*/
-	{ 2181, 1622, 1503, 1511},/*T8*/
-	{ 2171, 1612, 1493, 1501} /*T9*/
+	{ 4520, 4312, 4090, 3565},/*T0*/
+	{ 4396, 4413, 4080, 3584},/*T1*/
+	{ 4318, 4132, 4110, 3546},/*T2*/
+	{ 4135, 3591, 3458, 3473},/*T3*/
+	{ 4123, 3560, 3443, 3451},/*T4*/
+	{ 3811, 3252, 3133, 3141},/*T5*/
+	{ 3801, 3242, 3123, 3131},/*T6*/
+	{ 3791, 3232, 3113, 3121},/*T7*/
+	{ 3781, 3322, 3103, 3111},/*T8*/
+	{ 3771, 3312, 3093, 3101} /*T9*/
 };
 
 int g_Q_MAX_H_CURRENT[MAX_TABLE][TOTAL_BATTERY_NUMBER] = {
