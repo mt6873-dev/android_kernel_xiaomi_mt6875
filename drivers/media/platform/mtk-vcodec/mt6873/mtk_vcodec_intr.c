@@ -19,6 +19,18 @@
 #include "mtk_vcodec_intr.h"
 #include "mtk_vcodec_util.h"
 
+/* VDEC_ISR_TEMP_DIAG: temporary diagnostics for the vdec LAT-ISR stall
+ * investigation (every decode frame times out at 500ms). Revert once the
+ * data is collected.
+ */
+#define VDEC_ISR_TEMP_DIAG (1)
+#if VDEC_ISR_TEMP_DIAG
+static unsigned int vdec_lat_isr_cnt;
+static unsigned int vdec_lat_isr_wake_cnt;
+static unsigned int vdec_core_isr_cnt;
+static unsigned int vdec_core_isr_wake_cnt;
+#endif
+
 int mtk_vcodec_wait_for_done_ctx(struct mtk_vcodec_ctx  *ctx,
 	int core_id, int command, unsigned int timeout_ms)
 
@@ -46,6 +58,20 @@ int mtk_vcodec_wait_for_done_ctx(struct mtk_vcodec_ctx  *ctx,
 		mtk_v4l2_err("[%d] cmd=%d, ctx->type=%d, core_id %d timeout time=%ums out %d %d!",
 			ctx->id, ctx->type, core_id, command, timeout_ms,
 			ctx->int_cond[core_id], ctx->int_type);
+#if VDEC_ISR_TEMP_DIAG
+		{
+			struct mtk_vcodec_dev *dev = ctx->dev;
+
+			mtk_v4l2_err("WAITDIAG core=%d lat_isr=%u/%u core_isr=%u/%u "
+				"lat_misc_a4=0x%08x vdec_base=0x%08x vdec_sys=0x%08x",
+				core_id, vdec_lat_isr_cnt, vdec_lat_isr_wake_cnt,
+				vdec_core_isr_cnt, vdec_core_isr_wake_cnt,
+				readl(dev->dec_reg_base[VDEC_LAT_MISC] +
+					MTK_VDEC_IRQ_CFG_REG),
+				readl(dev->dec_reg_base[VDEC_BASE]),
+				readl(dev->dec_reg_base[VDEC_SYS]));
+		}
+#endif
 	} else if (-ERESTARTSYS == ret) {
 		mtk_v4l2_err("[%d] cmd=%d, ctx->type=%d, core_id %d timeout interrupted by a signal %d %d",
 			ctx->id, ctx->type, core_id,
@@ -92,6 +118,12 @@ irqreturn_t mtk_vcodec_dec_irq_handler(int irq, void *priv)
 
 	dec_done_status = readl(vdec_misc_addr);
 	ctx->irq_status = dec_done_status;
+#if VDEC_ISR_TEMP_DIAG
+	vdec_core_isr_cnt++;
+	if (vdec_core_isr_cnt <= 8 || (vdec_core_isr_cnt % 1000) == 0)
+		mtk_v4l2_err("COREDIAG isr#%u cg=0x%08x done=0x%08x",
+			vdec_core_isr_cnt, cg_status, dec_done_status);
+#endif
 	if ((dec_done_status & MTK_VDEC_IRQ_STATUS_DEC_SUCCESS) !=
 		MTK_VDEC_IRQ_STATUS_DEC_SUCCESS)
 		return IRQ_HANDLED;
@@ -103,6 +135,9 @@ irqreturn_t mtk_vcodec_dec_irq_handler(int irq, void *priv)
 		   dev->dec_reg_base[VDEC_MISC] + MTK_VDEC_IRQ_CFG_REG);
 
 	wake_up_dec_ctx(ctx, MTK_VDEC_CORE);
+#if VDEC_ISR_TEMP_DIAG
+	vdec_core_isr_wake_cnt++;
+#endif
 
 	mtk_v4l2_debug(4,
 				   "%s :wake up ctx %d, dec_done_status=%x",
@@ -136,6 +171,12 @@ irqreturn_t mtk_vcodec_lat_dec_irq_handler(int irq, void *priv)
 
 	dec_done_status = readl(vdec_misc_addr);
 	ctx->irq_status = dec_done_status;
+#if VDEC_ISR_TEMP_DIAG
+	vdec_lat_isr_cnt++;
+	if (vdec_lat_isr_cnt <= 8 || (vdec_lat_isr_cnt % 1000) == 0)
+		mtk_v4l2_err("LATDIAG isr#%u cg=0x%08x done=0x%08x",
+			vdec_lat_isr_cnt, cg_status, dec_done_status);
+#endif
 	if ((dec_done_status & MTK_VDEC_IRQ_STATUS_DEC_SUCCESS) !=
 		MTK_VDEC_IRQ_STATUS_DEC_SUCCESS)
 		return IRQ_HANDLED;
@@ -147,6 +188,9 @@ irqreturn_t mtk_vcodec_lat_dec_irq_handler(int irq, void *priv)
 		   dev->dec_reg_base[VDEC_LAT_MISC] + MTK_VDEC_IRQ_CFG_REG);
 
 	wake_up_dec_ctx(ctx, MTK_VDEC_LAT);
+#if VDEC_ISR_TEMP_DIAG
+	vdec_lat_isr_wake_cnt++;
+#endif
 
 	mtk_v4l2_debug(4,
 				   "%s :wake up ctx %d, dec_done_status=%x",
