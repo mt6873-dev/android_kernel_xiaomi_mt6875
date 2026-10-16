@@ -1,0 +1,47 @@
+--- a/libprocessgroup/task_profiles.cpp
++++ b/libprocessgroup/task_profiles.cpp
+@@ -21,6 +21,7 @@
+ #include <fcntl.h>
+ #include <unistd.h>
+ #include <task_profiles.h>
++#include <processgroup/processgroup.h>
+ #include <string>
+ 
+ #include <android-base/file.h>
+@@ -135,7 +136,10 @@
+ }
+ 
+ std::string ConvertUidToPath(const char* root_cgroup_path, uid_t uid) {
+-    if (android::libprocessgroup_flags::cgroup_v2_sys_app_isolation()) {
++    // Keep vendor memory cgroup v1 paths flat. Only the v2 hierarchy
++    // is split into system and apps, including when the aconfig flag is off.
++    const auto cgroup2 = CgroupMap::GetInstance().FindController(CGROUPV2_HIERARCHY_NAME);
++    if (cgroup2.HasValue() && std::string(root_cgroup_path) == cgroup2.path()) {
+         if (isSystemApp(uid))
+             return StringPrintf("%s/system/uid_%u", root_cgroup_path, uid);
+         else
+--- a/libprocessgroup/setup/cgroup_map_write.cpp
++++ b/libprocessgroup/setup/cgroup_map_write.cpp
+@@ -564,8 +564,8 @@
+     }
+ 
+     // System / app isolation.
+-    // This really belongs in early-init in init.rc, but we cannot use the flag there.
+-    if (android::libprocessgroup_flags::cgroup_v2_sys_app_isolation()) {
++    // Create both subtrees before any UID process groups, independently of aconfig.
++    {
+         const auto it = descriptors.find(CGROUPV2_HIERARCHY_NAME);
+         const std::string cgroup_v2_root = (it == descriptors.end())
+                                                    ? CGROUP_V2_ROOT_DEFAULT
+--- a/libprocessgroup/processgroup.cpp
++++ b/libprocessgroup/processgroup.cpp
+@@ -279,7 +279,8 @@
+     std::string path, memcg_apps_path;
+ 
+     if (CgroupGetControllerPath(CGROUPV2_HIERARCHY_NAME, &path)) {
+-        cgroups.push_back(path);
++        cgroups.push_back(path + "/system");
++        cgroups.push_back(path + "/apps");
+     }
+     if (CgroupGetMemcgAppsPath(&memcg_apps_path) && memcg_apps_path != path) {
+         cgroups.push_back(memcg_apps_path);

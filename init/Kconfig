@@ -949,13 +949,11 @@ config CGROUP_RDMA
 config CGROUP_FREEZER
 	bool "Freezer controller"
 	help
-	  Provides a way to freeze and unfreeze all tasks in a
-	  cgroup.
+	  Provides a way to freeze and unfreeze all tasks in a cgroup v1
+	  hierarchy. This option only affects the legacy freezer.state API.
 
-	  This option affects the ORIGINAL cgroup interface. The cgroup2 memory
-	  controller includes important in-kernel memory consumers per default.
-
-	  If you're using cgroup2, say N.
+	  The cgroup v2 freezer (cgroup.freeze and cgroup.events) is always
+	  available when CGROUPS is enabled, independently of this option.
 
 config CGROUP_HUGETLB
 	bool "HugeTLB controller"
