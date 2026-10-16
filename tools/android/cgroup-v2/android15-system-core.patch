@@ -14,7 +14,7 @@
  std::string ConvertUidToPath(const char* root_cgroup_path, uid_t uid) {
 -    if (android::libprocessgroup_flags::cgroup_v2_sys_app_isolation()) {
 +    // Keep vendor memory cgroup v1 paths flat. Only the v2 hierarchy
-+    // is split into system and apps, including when the aconfig flag is off.
++    // is split into system and apps, including when the build flag is off.
 +    const auto cgroup2 = CgroupMap::GetInstance().FindController(CGROUPV2_HIERARCHY_NAME);
 +    if (cgroup2.HasValue() && std::string(root_cgroup_path) == cgroup2.path()) {
          if (isSystemApp(uid))
@@ -28,7 +28,7 @@
      // System / app isolation.
 -    // This really belongs in early-init in init.rc, but we cannot use the flag there.
 -    if (android::libprocessgroup_flags::cgroup_v2_sys_app_isolation()) {
-+    // Create both subtrees before any UID process groups, independently of aconfig.
++    // Create both subtrees before any UID process groups, independently of the build flag.
 +    {
          const auto it = descriptors.find(CGROUPV2_HIERARCHY_NAME);
          const std::string cgroup_v2_root = (it == descriptors.end())

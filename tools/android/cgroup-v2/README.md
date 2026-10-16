@@ -47,10 +47,26 @@ are deliberately kept flat, avoiding accidental double `apps` nesting.
 ROMs with a materially different libprocessgroup need adaptation rather
 than blindly applying or replacing shared libraries.
 
-The connected phone was subsequently checked and reports Android 12 / SDK
-31. Its live hierarchy is still flat (`/sys/fs/cgroup/uid_*`). The Android
-15 companion patch is **not** a system-side fix for this installed ROM;
-`system/uid_*` and `apps/uid_*` remain outstanding on that ROM.
+The initial flash was tested with Android 12 / SDK 31. Later checks on
+2026-10-16 found Android 13 / SDK 33 and then Android 15 / SDK 35 on the
+same phone, still running build #99. These ROMs need separate integration
+checks; kernel test results do not establish their directory layout.
+
+On the latest Android 15 installation, `/sys/fs/cgroup` is a real cgroup2
+mount, but its UID groups are still flat. Disassembly of that ROM's
+`libprocessgroup.so` shows `ConvertUidToPath` directly formatting
+`%s/uid_%u`, without a system/app branch. Its library SHA-256 is
+`034a4c46af9bf630317ec85e3e027402306632ea1d5522da9e2cc84682964e04`.
+The companion patch has not been built into this ROM. The requested
+`system/uid_*` and `apps/uid_*` layout therefore remains unimplemented
+on the phone, even though the kernel freezer tests pass.
+
+AOSP Android 15 also has the product build option
+`PRODUCT_CGROUP_V2_SYS_APP_ISOLATION_ENABLED := true`. This selects
+`CGROUP_V2_SYS_APP_ISOLATION` at compilation; it is not a `setprop` or
+`device_config` runtime switch. A vendor library lacking that branch needs
+a matching source rebuild. The companion patch additionally keeps v1
+memory paths flat in this hybrid setup.
 
 From the ROM's `system/core` checkout:
 
@@ -72,6 +88,37 @@ feature and does not appear in `cgroup.controllers`.
 
 The companion patch has been apply-checked against the stated AOSP tag;
 it has not been integrated into or runtime-tested on the user's ROM.
+
+## MIUI v1 mount conflict
+
+The Android 13 ROM inspected on this phone had
+`persist.sys.millet.cgroup1=true`. Its `cgroups_v1.json` selected
+`/dev/cg2_bpf` for cgroup2, while `init.milletmonitor.rc` mounted tmpfs
+over `/sys/fs/cgroup` and a legacy freezer at `/sys/fs/cgroup/freezer`.
+The boot-completed action then created a regular tmpfs file named
+`frozen/cgroup.freeze`; the name alone did not make it a freezer interface.
+The read-only mount and init-file checks identified this as a ROM setup
+conflict, with the same #99 boot partition hash still present.
+
+For a ROM that implements this selector, disabling it before the next boot
+selects its v2 setup. Verify the actual mounts after reboot rather than
+assuming every MIUI release uses the same property. The subsequent
+Android 15 installation had no such property and mounted cgroup2 at
+`/sys/fs/cgroup` directly; no change to that property is needed there.
+
+Inspect these as root:
+
+```
+getprop ro.build.version.sdk
+getprop persist.sys.millet.cgroup1
+cat /proc/1/mountinfo | grep -E 'cgroup|cg2_bpf'
+cat /sys/fs/cgroup/uid_0/cgroup.events
+cat /sys/fs/cgroup/uid_0/cgroup.freeze
+```
+
+The v2 root itself has no `cgroup.freeze` or `cgroup.events`. Check a
+non-root group. Neither a successful mount nor a functional freezer
+changes Android's UID path generation.
 
 ## Validation
 
@@ -111,6 +158,12 @@ also passed. Test groups were removed; the captured kernel log contained
 no panic, Oops, BUG, or WARNING. The ROM's automatic cached-app freezer
 setting still reports `use_freezer=false`; it was not changed by testing.
 
+After the phone changed to Android 15 / SDK 35, both test binaries were
+copied back and run again on the live `/sys/fs/cgroup` cgroup2 mount.
+All ten freezer tests and both Binder checks passed again, and no `cg_*`
+test groups remained. This confirms the kernel interfaces on that ROM;
+it does not validate system/app isolation or automatic app freezing.
+
 Tested boot image SHA-256:
 `d30ff1a4f40e1e677ca8716438b8e9a1d5af3c1a89d8cce622dc3c0490a3576c`.
 Its code base is `d04cfc3b3b0f` plus the pre-existing local driver/probe
@@ -138,3 +191,4 @@ patch or replace a system-side hierarchy migration.
 * [Binder freezer introduction, 432ff1e91694](https://github.com/torvalds/linux/commit/432ff1e91694e4c55a5bf6bc0574f4c254970232)
 * [Linux 5.15 stable Binder drain/race handling](https://github.com/gregkh/linux/blob/linux-5.15.y/drivers/android/binder.c)
 * [AOSP Android 15 path generation](https://android.googlesource.com/platform/system/core/+/refs/tags/android-15.0.0_r1/libprocessgroup/task_profiles.cpp)
+* [AOSP Android 15 compile-time isolation option](https://android.googlesource.com/platform/system/core/+/refs/tags/android-15.0.0_r1/libprocessgroup/Android.bp)
