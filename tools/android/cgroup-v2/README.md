@@ -47,6 +47,11 @@ are deliberately kept flat, avoiding accidental double `apps` nesting.
 ROMs with a materially different libprocessgroup need adaptation rather
 than blindly applying or replacing shared libraries.
 
+The connected phone was subsequently checked and reports Android 12 / SDK
+31. Its live hierarchy is still flat (`/sys/fs/cgroup/uid_*`). The Android
+15 companion patch is **not** a system-side fix for this installed ROM;
+`system/uid_*` and `apps/uid_*` remain outstanding on that ROM.
+
 From the ROM's `system/core` checkout:
 
 ```
@@ -91,8 +96,26 @@ Validation performed during this backport: the seven affected ARM64
 objects compiled; both userspace test programs compiled; the Binder ABI
 test passed; the Android companion patch applied cleanly to its reference
 tag; nine boundary cases passed for the patched path helper with mocked
-controller lookup. Neither the kernel runtime regressions nor a full
-Android system build have been run.
+controller lookup. A full Android system build has not been run.
+
+On 2026-10-16, `./build.sh` completed and build #99 was flashed to the
+cezanne boot partition. The running version and full partition SHA-256
+were verified after Android completed boot. The image preserves the
+previous boot image's ramdisk and official DTB. KernelSU root and the
+vendor fpsgo module remained available.
+
+All ten upstream freezer tests passed on the phone: simple, tree,
+concurrent fork, mkdir, rmdir, migration, ptrace, stopped, ptraced, and
+vfork. The Binder ABI and disposable endpoint freeze/query/thaw tests
+also passed. Test groups were removed; the captured kernel log contained
+no panic, Oops, BUG, or WARNING. The ROM's automatic cached-app freezer
+setting still reports `use_freezer=false`; it was not changed by testing.
+
+Tested boot image SHA-256:
+`d30ff1a4f40e1e677ca8716438b8e9a1d5af3c1a89d8cce622dc3c0490a3576c`.
+Its code base is `d04cfc3b3b0f` plus the pre-existing local driver/probe
+changes used by the previous test kernel; the saved flash manifest also
+records the working-tree diff hash. It is not a clean-checkout image.
 
 On the target after a matching boot image and ROM are installed:
 
@@ -104,8 +127,9 @@ cat /sys/fs/cgroup/system/uid_0/cgroup.freeze
 
 Never write 1 to `system/cgroup.freeze` or `system/uid_0/cgroup.freeze`
 as a smoke test; those groups contain essential services. Use only
-disposable test groups/processes. No phone was attached to ADB while this
-backport was prepared, so runtime validation is still outstanding.
+disposable test groups/processes. The runtime tests above validate the
+kernel interfaces; they do not validate the unapplied Android companion
+patch or replace a system-side hierarchy migration.
 
 ## Sources
 
