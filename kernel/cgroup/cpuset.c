@@ -1276,6 +1276,77 @@ static void update_tasks_cpumask(struct cpuset *cs, struct cpumask *new_cpus)
 	css_task_iter_end(&it);
 }
 
+/*
+ * MT6885's scheduling boost temporarily restricts selected v1 cpusets.
+ * Keep the user's requested mask so disabling boost restores it. Do not
+ * bypass the v2 partition rules when a product moves cpuset to v2.
+ */
+static void update_user_space_global_cpuset(const struct cpumask *global_cpus,
+					   int cgroup_id)
+{
+	struct cgroup_subsys_state *pos_css;
+	struct cpuset *cs;
+	bool rebuild = false;
+
+	cpus_read_lock();
+	mutex_lock(&cpuset_mutex);
+	if (cgroup_subsys_on_dfl(cpuset_cgrp_subsys))
+		goto out;
+
+	rcu_read_lock();
+	cpuset_for_each_descendant_pre(cs, pos_css, &top_cpuset) {
+		struct cpumask desired, scratch;
+		bool changed;
+
+		if (cs == &top_cpuset ||
+		    (cgroup_id && cs->css.cgroup->kn->id != cgroup_id) ||
+		    !css_tryget_online(&cs->css))
+			continue;
+		rcu_read_unlock();
+
+		cpumask_and(&desired, cs->cpus_requested,
+			    global_cpus ?: top_cpuset.effective_cpus);
+		cpumask_and(&desired, &desired, cpu_active_mask);
+		if (cpumask_empty(&desired)) {
+			/* A disjoint boost request must not empty a live cpuset. */
+			if (global_cpus)
+				cpumask_and(&desired, cs->cpus_requested, cpu_active_mask);
+			if (cpumask_empty(&desired))
+				cpumask_copy(&desired, parent_cs(cs)->effective_cpus);
+		}
+
+		spin_lock_irq(&callback_lock);
+		changed = !cpumask_equal(&desired, cs->effective_cpus);
+		cpumask_copy(cs->cpus_allowed, &desired);
+		cpumask_copy(cs->effective_cpus, &desired);
+		spin_unlock_irq(&callback_lock);
+		if (changed) {
+			update_tasks_cpumask(cs, &scratch);
+			if (is_sched_load_balance(cs))
+				rebuild = true;
+		}
+
+		rcu_read_lock();
+		css_put(&cs->css);
+	}
+	rcu_read_unlock();
+	if (rebuild)
+		rebuild_sched_domains_locked();
+out:
+	mutex_unlock(&cpuset_mutex);
+	cpus_read_unlock();
+}
+
+void set_user_space_global_cpuset(struct cpumask *global_cpus, int cgroup_id)
+{
+	update_user_space_global_cpuset(global_cpus, cgroup_id);
+}
+
+void unset_user_space_global_cpuset(int cgroup_id)
+{
+	update_user_space_global_cpuset(NULL, cgroup_id);
+}
+
 /**
  * compute_effective_cpumask - Compute the effective cpumask of the cpuset
  * @new_cpus: the temp variable for the new effective_cpus mask

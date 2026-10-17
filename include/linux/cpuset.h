@@ -57,6 +57,8 @@ extern void cpuset_update_active_cpus(void);
 extern void cpuset_wait_for_hotplug(void);
 extern void cpuset_cpus_allowed(struct task_struct *p, struct cpumask *mask);
 extern bool cpuset_cpus_allowed_fallback(struct task_struct *p);
+void set_user_space_global_cpuset(struct cpumask *global_cpus, int cgroup_id);
+void unset_user_space_global_cpuset(int cgroup_id);
 extern void cpuset_lock(void);
 extern void cpuset_unlock(void);
 extern void inc_dl_tasks_cs(struct task_struct *p);
