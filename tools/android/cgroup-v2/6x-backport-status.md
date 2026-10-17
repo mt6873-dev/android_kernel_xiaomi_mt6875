@@ -1,42 +1,31 @@
-# Cgroup v2 6.x backport status
+# Cgroup v2 backport status
 
-Work in progress. Do not describe this branch as a complete 6.6 backport or
-as phone-validated.
+Scope: Android 17 cgroup boot compatibility, adapted to the MT6885 4.14 tree.
+See [compatibility scope](android17-compatibility.md) for pinned upstream
+callers, and [target results](android17-test-results.md) for image hashes,
+passed tests and limitations. This is not a complete Linux 6.6 backport.
 
-Reference: MiCode/Xiaomi_Kernel_OpenSource, dada-v-oss, commit
-afb5a488a44e7e980b2ef7b4c145703cfcb7aac5 (Linux 6.6.30).
-Baseline: de6a05d23e41476f0e90c0ceae024ea4856b3e4f.
-Working branch: codex/cgroup-v2-6x. The dev branch is unchanged.
+Kernel donor: MiCode dada-v-oss, afb5a488a44e7e980b2ef7b4c145703cfcb7aac5,
+Linux 6.6.30. Baseline: de6a05d23e41476f0e90c0ceae024ea4856b3e4f.
 
-Implemented in the working tree:
-* The reference cpuset v2 masks, effective masks, root/isolated partitions,
-  invalidation and partition notifications.
-* Scheduler-domain and Deadline bandwidth dependencies adapted to 4.14.
-* A real nonblocking CPU hotplug read-lock API.
-* Retained cpuset filesystem alias and MT6885 legacy mask inheritance.
-* cgroup.kill with descendant traversal and concurrent-fork signaling.
-* Recursive CPU accounting from the 6.6 rstat algorithm, with fair/RT/DL
-  runtime and user/system accounting hooks.
-* cpu.weight, cpu.weight.nice, cpu.max and CPU throttle statistics.
-* Existing group IO/CFQ/BFQ, writeback and device throttling are enabled.
+Implemented:
+* Cpuset v2 masks/effective masks and root/isolated partition management;
+  scheduler/Deadline dependencies and nonblocking hotplug read lock.
+* MT6885 legacy mask inheritance and scheduling boost hooks retained.
+* cgroup.kill and concurrent-fork signaling.
+* Core recursive CPU accounting, cpu.weight/nice, cpu.max and throttle stats.
+* Block group/CFQ/BFQ, writeback and device-throttling configurations.
+* Hierarchical memory.min/low protection, memory_recursiveprot, peak and
+  local events, including v1 non-hierarchical and offline lifetime handling.
+* Existing v2/Binder freezer retained.
+* Explicit ARM64 CMDLINE_APPEND for printk.devkmsg=on after bootloader args.
 
-Validation: cpuset/core/cpu/scheduler/deadline/topology object compilation
-passed with implicit declarations and incompatible pointer types as errors,
-including the cgroup.kill addition (cpuset-build-8.log). Full build and phone
-tests remain pending.
+Validation: focused object builds, full ./build.sh build, seven early-boot
+v2 controller tests, ten freezer regressions, Binder ABI/endpoint tests and
+normal #103 phone boot passed. The early image is disposable and normal
+vendor mounts were verified again after restoring the normal image.
 
-Additional object validation: rstat-build-1.log and cpu-io-build-2.log
-passed. The rstat adaptation supplies core CPU accounting; it does not
-register modern BTF kfuncs or per-controller rstat callback nodes. Existing
-CSS layout is preserved.
-
-Work still required:
-* Remaining CPU features: idle groups, bandwidth burst and v2 uclamp.
-* 6.6 iocost/ioprio policies and their block-layer dependencies.
-* Memory/core interface parity inventory against the pinned reference.
-* CLONE_INTO_CGROUP and modern BPF kfunc dependencies require explicit work;
-  the first cpuset adaptation retains the inherited-cgroup fork callback.
-* Full build.sh build and disposable upstream cgroup selftests on the phone.
-* ROM init/libprocessgroup integration for system/uid_* paths.
-
-No flash or remote push has been performed for this branch.
+Not included: CPU idle/burst/v2 uclamp, iocost/ioprio, CLONE_INTO_CGROUP,
+modern BPF kfuncs or per-controller CSS rstat callback nodes. The rstat
+adaptation provides core CPU statistics and preserves the existing CSS
+layout. Actual Android 17 ROM boot and CTS/VTS have not been tested.
