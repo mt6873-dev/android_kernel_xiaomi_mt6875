@@ -6,6 +6,7 @@
  *  Copyright (C) 1991-2002  Linus Torvalds
  */
 #include <linux/sched.h>
+#include <linux/nospec.h>
 #include <linux/sched/clock.h>
 #include <linux/sched/energy.h>
 #include <uapi/linux/sched/types.h>
@@ -8250,8 +8251,9 @@ static void cpu_cgroup_fork(struct task_struct *task)
 	task_rq_unlock(rq, task, &rf);
 }
 
-static int cpu_cgroup_can_attach(struct cgroup_taskset *tset)
+static int cpu_cgroup_can_attach_legacy(struct cgroup_taskset *tset)
 {
+
 	struct task_struct *task;
 	struct cgroup_subsys_state *css;
 	int ret = 0;
@@ -8279,6 +8281,16 @@ static int cpu_cgroup_can_attach(struct cgroup_taskset *tset)
 			break;
 	}
 	return ret;
+}
+
+static int cpu_cgroup_can_attach(struct cgroup_taskset *tset)
+{
+#ifndef CONFIG_RT_GROUP_SCHED
+	/* On v2, fair CPU control does not regulate realtime tasks. */
+	if (cgroup_subsys_on_dfl(cpu_cgrp_subsys))
+		return 0;
+#endif
+	return cpu_cgroup_can_attach_legacy(tset);
 }
 
 static void cpu_cgroup_attach(struct cgroup_taskset *tset)
@@ -8844,6 +8856,163 @@ static struct cftype cpu_files[] = {
 	{ }	/* Terminate */
 };
 
+static u64 cpu_weight_read_u64(struct cgroup_subsys_state *css,
+			       struct cftype *cft)
+{
+	struct task_group *tg = css_tg(css);
+	u64 weight = scale_load_down(tg->shares);
+
+	return DIV_ROUND_CLOSEST_ULL(weight * CGROUP_WEIGHT_DFL, 1024);
+}
+
+static int cpu_weight_write_u64(struct cgroup_subsys_state *css,
+				struct cftype *cft, u64 weight)
+{
+	/*
+	 * cgroup weight knobs should use the common MIN, DFL and MAX
+	 * values which are 1, 100 and 10000 respectively.  While it loses
+	 * a bit of range on both ends, it maps pretty well onto the shares
+	 * value used by scheduler and the round-trip conversions preserve
+	 * the original value over the entire range.
+	 */
+	if (weight < CGROUP_WEIGHT_MIN || weight > CGROUP_WEIGHT_MAX)
+		return -ERANGE;
+
+	weight = DIV_ROUND_CLOSEST_ULL(weight * 1024, CGROUP_WEIGHT_DFL);
+
+	return sched_group_set_shares(css_tg(css), scale_load(weight));
+}
+
+static s64 cpu_weight_nice_read_s64(struct cgroup_subsys_state *css,
+				    struct cftype *cft)
+{
+	unsigned long weight = scale_load_down(css_tg(css)->shares);
+	int last_delta = INT_MAX;
+	int prio, delta;
+
+	/* find the closest nice value to the current weight */
+	for (prio = 0; prio < ARRAY_SIZE(sched_prio_to_weight); prio++) {
+		delta = abs(sched_prio_to_weight[prio] - weight);
+		if (delta >= last_delta)
+			break;
+		last_delta = delta;
+	}
+
+	return PRIO_TO_NICE(prio - 1 + MAX_RT_PRIO);
+}
+
+static int cpu_weight_nice_write_s64(struct cgroup_subsys_state *css,
+				     struct cftype *cft, s64 nice)
+{
+	unsigned long weight;
+	int idx;
+
+	if (nice < MIN_NICE || nice > MAX_NICE)
+		return -ERANGE;
+
+	idx = NICE_TO_PRIO(nice) - MAX_RT_PRIO;
+	idx = array_index_nospec(idx, 40);
+	weight = sched_prio_to_weight[idx];
+
+	return sched_group_set_shares(css_tg(css), scale_load(weight));
+}
+
+static void __maybe_unused cpu_period_quota_print(struct seq_file *sf,
+						  long period, long quota)
+{
+	if (quota < 0)
+		seq_puts(sf, "max");
+	else
+		seq_printf(sf, "%ld", quota);
+
+	seq_printf(sf, " %ld\n", period);
+}
+
+static int __maybe_unused cpu_period_quota_parse(char *buf,
+						 u64 *periodp, u64 *quotap)
+{
+	char tok[21];	/* U64_MAX */
+
+	if (sscanf(buf, "%20s %llu", tok, periodp) < 1)
+		return -EINVAL;
+
+	*periodp *= NSEC_PER_USEC;
+
+	if (sscanf(tok, "%llu", quotap))
+		*quotap *= NSEC_PER_USEC;
+	else if (!strcmp(tok, "max"))
+		*quotap = RUNTIME_INF;
+	else
+		return -EINVAL;
+
+	return 0;
+}
+
+#ifdef CONFIG_CFS_BANDWIDTH
+static int cpu_max_show(struct seq_file *sf, void *v)
+{
+	struct task_group *tg = css_tg(seq_css(sf));
+
+	cpu_period_quota_print(sf, tg_get_cfs_period(tg), tg_get_cfs_quota(tg));
+	return 0;
+}
+
+static ssize_t cpu_max_write(struct kernfs_open_file *of,
+			     char *buf, size_t nbytes, loff_t off)
+{
+	struct task_group *tg = css_tg(of_css(of));
+	u64 period = tg_get_cfs_period(tg);
+	u64 quota;
+	int ret;
+
+	ret = cpu_period_quota_parse(buf, &period, &quota);
+	if (!ret)
+		ret = tg_set_cfs_bandwidth(tg, period, quota);
+	return ret ?: nbytes;
+}
+#endif
+
+
+
+static int cpu_extra_stat_show(struct seq_file *sf, struct cgroup_subsys_state *css)
+{
+#ifdef CONFIG_CFS_BANDWIDTH
+	struct cfs_bandwidth *cfs_b = &css_tg(css)->cfs_bandwidth;
+	u64 throttled_usec = cfs_b->throttled_time;
+
+	do_div(throttled_usec, NSEC_PER_USEC);
+	seq_printf(sf, "nr_periods %d\nnr_throttled %d\nthrottled_usec %llu\n",
+		   cfs_b->nr_periods, cfs_b->nr_throttled, throttled_usec);
+#endif
+	return 0;
+}
+
+static struct cftype cpu_dfl_files[] = {
+#ifdef CONFIG_FAIR_GROUP_SCHED
+	{
+		.name = "weight",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.read_u64 = cpu_weight_read_u64,
+		.write_u64 = cpu_weight_write_u64,
+	},
+	{
+		.name = "weight.nice",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.read_s64 = cpu_weight_nice_read_s64,
+		.write_s64 = cpu_weight_nice_write_s64,
+	},
+#endif
+#ifdef CONFIG_CFS_BANDWIDTH
+	{
+		.name = "max",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.seq_show = cpu_max_show,
+		.write = cpu_max_write,
+	},
+#endif
+	{ }
+};
+
 struct cgroup_subsys cpu_cgrp_subsys = {
 	.css_alloc	= cpu_cgroup_css_alloc,
 	.css_online	= cpu_cgroup_css_online,
@@ -8853,6 +9022,9 @@ struct cgroup_subsys cpu_cgrp_subsys = {
 	.can_attach	= cpu_cgroup_can_attach,
 	.attach		= cpu_cgroup_attach,
 	.legacy_cftypes	= cpu_files,
+	.dfl_cftypes	= cpu_dfl_files,
+	.css_extra_stat_show = cpu_extra_stat_show,
+	.threaded	= true,
 	.early_init	= true,
 };
 

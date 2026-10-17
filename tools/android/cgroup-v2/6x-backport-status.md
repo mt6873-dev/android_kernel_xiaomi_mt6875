@@ -15,15 +15,24 @@ Implemented in the working tree:
 * A real nonblocking CPU hotplug read-lock API.
 * Retained cpuset filesystem alias and MT6885 legacy mask inheritance.
 * cgroup.kill with descendant traversal and concurrent-fork signaling.
+* Recursive CPU accounting from the 6.6 rstat algorithm, with fair/RT/DL
+  runtime and user/system accounting hooks.
+* cpu.weight, cpu.weight.nice, cpu.max and CPU throttle statistics.
+* Existing group IO/CFQ/BFQ, writeback and device throttling are enabled.
 
 Validation: cpuset/core/cpu/scheduler/deadline/topology object compilation
 passed with implicit declarations and incompatible pointer types as errors,
 including the cgroup.kill addition (cpuset-build-8.log). Full build and phone
 tests remain pending.
 
+Additional object validation: rstat-build-1.log and cpu-io-build-2.log
+passed. The rstat adaptation supplies core CPU accounting; it does not
+register modern BTF kfuncs or per-controller rstat callback nodes. Existing
+CSS layout is preserved.
+
 Work still required:
-* CPU v2 control and real CPU accounting/statistics.
-* Group IO, writeback and throttling.
+* Remaining CPU features: idle groups, bandwidth burst and v2 uclamp.
+* 6.6 iocost/ioprio policies and their block-layer dependencies.
 * Memory/core interface parity inventory against the pinned reference.
 * CLONE_INTO_CGROUP and modern BPF kfunc dependencies require explicit work;
   the first cpuset adaptation retains the inherited-cgroup fork callback.

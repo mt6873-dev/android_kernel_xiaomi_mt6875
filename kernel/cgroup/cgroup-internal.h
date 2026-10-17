@@ -266,4 +266,9 @@ struct dentry *cgroup1_mount(struct file_system_type *fs_type, int flags,
 
 int __cgroup_task_count(const struct cgroup *cgrp);
 
+int cgroup_rstat_init(struct cgroup *cgrp);
+void cgroup_rstat_exit(struct cgroup *cgrp);
+void cgroup_rstat_boot(void);
+void cgroup_base_stat_cputime_show(struct seq_file *seq);
+
 #endif /* __CGROUP_INTERNAL_H */

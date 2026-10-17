@@ -1059,6 +1059,7 @@ static void update_curr_rt(struct rq *rq)
 	per_cpu(update_curr_exec_start, rq->cpu) = sched_clock_cpu(rq->cpu);
 
 	cpuacct_charge(curr, delta_exec);
+	cgroup_account_cputime(curr, delta_exec);
 
 	sched_rt_avg_update(rq, delta_exec);
 

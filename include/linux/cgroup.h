@@ -692,7 +692,42 @@ static inline void cgroup_kthread_ready(void)
 }
 
 void cgroup_path_from_kernfs_id(u64 id, char *buf, size_t buflen);
+
+void cgroup_rstat_updated(struct cgroup *cgrp, int cpu);
+void cgroup_rstat_flush(struct cgroup *cgrp);
+void cgroup_rstat_flush_hold(struct cgroup *cgrp);
+void cgroup_rstat_flush_release(void);
+void __cgroup_account_cputime(struct cgroup *cgrp, u64 delta_exec);
+void __cgroup_account_cputime_field(struct cgroup *cgrp, int index, u64 delta_exec);
+
+static inline void cgroup_account_cputime(struct task_struct *task, u64 delta_exec)
+{
+	struct cgroup *cgrp;
+
+	rcu_read_lock();
+	cgrp = task_dfl_cgroup(task);
+	if (cgroup_parent(cgrp))
+		__cgroup_account_cputime(cgrp, delta_exec);
+	rcu_read_unlock();
+}
+
+static inline void cgroup_account_cputime_field(struct task_struct *task,
+					       int index, u64 delta_exec)
+{
+	struct cgroup *cgrp;
+
+	rcu_read_lock();
+	cgrp = task_dfl_cgroup(task);
+	if (cgroup_parent(cgrp))
+		__cgroup_account_cputime_field(cgrp, index, delta_exec);
+	rcu_read_unlock();
+}
+
 #else /* !CONFIG_CGROUPS */
+
+static inline void cgroup_account_cputime(struct task_struct *task, u64 delta) { }
+static inline void cgroup_account_cputime_field(struct task_struct *task, int index, u64 delta) { }
+
 
 struct cgroup_subsys_state;
 struct cgroup;
