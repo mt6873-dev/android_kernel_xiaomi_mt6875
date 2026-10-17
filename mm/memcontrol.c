@@ -4444,6 +4444,8 @@ static void mem_cgroup_css_offline(struct cgroup_subsys_state *css)
 	spin_unlock(&memcg->event_list_lock);
 
 	memcg->low = 0;
+	page_counter_set_min(&memcg->memory, 0);
+	page_counter_set_low(&memcg->memory, 0);
 
 	memcg_offline_kmem(memcg);
 	wb_memcg_offline(memcg);
@@ -5681,7 +5683,9 @@ void mem_cgroup_calculate_protection(struct mem_cgroup *root,
 	unsigned long usage, parent_usage;
 	struct mem_cgroup *parent;
 
-	if (mem_cgroup_disabled())
+	/* Legacy non-hierarchical counters can have no parent. */
+	if (mem_cgroup_disabled() ||
+	    !cgroup_subsys_on_dfl(memory_cgrp_subsys))
 		return;
 
 	if (!root)
