@@ -51,6 +51,7 @@
 #include <linux/kthread.h>
 #include <linux/atomic.h>
 #include <linux/cpuset.h>
+#include <linux/sched/deadline.h>
 #include <linux/proc_ns.h>
 #include <linux/nsproxy.h>
 #include <linux/file.h>
@@ -2356,8 +2357,11 @@ static int cgroup_migrate_execute(struct cgroup_mgctx *mgctx)
 			get_css_set(to_cset);
 			to_cset->nr_tasks++;
 			css_set_move_task(task, from_cset, to_cset, true);
-			put_css_set_locked(from_cset);
 			from_cset->nr_tasks--;
+			/* Migration must also update the v2 freezer state. */
+			cgroup_freezer_migrate_task(task, from_cset->dfl_cgrp,
+						    to_cset->dfl_cgrp);
+			put_css_set_locked(from_cset);
 		}
 	}
 	spin_unlock_irq(&css_set_lock);
@@ -3409,8 +3413,10 @@ static ssize_t cgroup_max_depth_write(struct kernfs_open_file *of,
 
 static int cgroup_events_show(struct seq_file *seq, void *v)
 {
-	seq_printf(seq, "populated %d\n",
-		   cgroup_is_populated(seq_css(seq)->cgroup));
+	struct cgroup *cgrp = seq_css(seq)->cgroup;
+
+	seq_printf(seq, "populated %d\n", cgroup_is_populated(cgrp));
+	seq_printf(seq, "frozen %d\n", test_bit(CGRP_FROZEN, &cgrp->flags));
 	return 0;
 }
 
@@ -3531,6 +3537,40 @@ bool cgroup_psi_enabled(void)
 }
 
 #endif /* CONFIG_PSI */
+
+static int cgroup_freeze_show(struct seq_file *seq, void *v)
+{
+	struct cgroup *cgrp = seq_css(seq)->cgroup;
+
+	seq_printf(seq, "%d\n", cgrp->freezer.freeze);
+
+	return 0;
+}
+
+static ssize_t cgroup_freeze_write(struct kernfs_open_file *of,
+				   char *buf, size_t nbytes, loff_t off)
+{
+	struct cgroup *cgrp;
+	ssize_t ret;
+	int freeze;
+
+	ret = kstrtoint(strstrip(buf), 0, &freeze);
+	if (ret)
+		return ret;
+
+	if (freeze < 0 || freeze > 1)
+		return -ERANGE;
+
+	cgrp = cgroup_kn_lock_live(of->kn, false);
+	if (!cgrp)
+		return -ENOENT;
+
+	cgroup_freeze(cgrp, freeze);
+
+	cgroup_kn_unlock(of->kn);
+
+	return nbytes;
+}
 
 static int cgroup_file_open(struct kernfs_open_file *of)
 {
@@ -3755,6 +3795,8 @@ static int cgroup_addrm_files(struct cgroup_subsys_state *css,
 restart:
 	for (cft = cfts; cft != cft_end && cft->name[0] != '\0'; cft++) {
 		/* does cft->flags tell us to skip this file on @cgrp? */
+		if ((cft->flags & CFTYPE_DEBUG) && !IS_ENABLED(CONFIG_CGROUP_DEBUG))
+			continue;
 		if ((cft->flags & CFTYPE_PRESSURE) && !cgroup_psi_enabled())
 			continue;
 		if ((cft->flags & __CFTYPE_ONLY_ON_DFL) && !cgroup_on_dfl(cgrp))
@@ -4688,6 +4730,83 @@ out_unlock:
 }
 
 /* cgroup core interface files for the default hierarchy */
+static void __cgroup_kill(struct cgroup *cgrp)
+{
+	struct css_task_iter it;
+	struct task_struct *task;
+
+	lockdep_assert_held(&cgroup_mutex);
+
+	spin_lock_irq(&css_set_lock);
+	set_bit(CGRP_KILL, &cgrp->flags);
+	spin_unlock_irq(&css_set_lock);
+
+	css_task_iter_start(&cgrp->self, CSS_TASK_ITER_PROCS | CSS_TASK_ITER_THREADED, &it);
+	while ((task = css_task_iter_next(&it))) {
+		/* Ignore kernel threads here. */
+		if (task->flags & PF_KTHREAD)
+			continue;
+
+		/* Skip tasks that are already dying. */
+		if (__fatal_signal_pending(task))
+			continue;
+
+		send_sig(SIGKILL, task, 0);
+	}
+	css_task_iter_end(&it);
+
+	spin_lock_irq(&css_set_lock);
+	clear_bit(CGRP_KILL, &cgrp->flags);
+	spin_unlock_irq(&css_set_lock);
+}
+
+static void cgroup_kill(struct cgroup *cgrp)
+{
+	struct cgroup_subsys_state *css;
+	struct cgroup *dsct;
+
+	lockdep_assert_held(&cgroup_mutex);
+
+	css_for_each_descendant_pre(css, &cgrp->self) {
+		dsct = css->cgroup;
+		if (!cgroup_is_dead(dsct))
+			__cgroup_kill(dsct);
+	}
+}
+
+static ssize_t cgroup_kill_write(struct kernfs_open_file *of, char *buf,
+				 size_t nbytes, loff_t off)
+{
+	ssize_t ret = 0;
+	int kill;
+	struct cgroup *cgrp;
+
+	ret = kstrtoint(strstrip(buf), 0, &kill);
+	if (ret)
+		return ret;
+
+	if (kill != 1)
+		return -ERANGE;
+
+	cgrp = cgroup_kn_lock_live(of->kn, false);
+	if (!cgrp)
+		return -ENOENT;
+
+	/*
+	 * Killing is a process directed operation, i.e. the whole thread-group
+	 * is taken down so act like we do for cgroup.procs and only make this
+	 * writable in non-threaded cgroups.
+	 */
+	if (cgroup_is_threaded(cgrp))
+		ret = -EOPNOTSUPP;
+	else
+		cgroup_kill(cgrp);
+
+	cgroup_kn_unlock(of->kn);
+
+	return ret ?: nbytes;
+}
+
 static struct cftype cgroup_base_files[] = {
 	{
 		.name = "cgroup.type",
@@ -4742,6 +4861,17 @@ static struct cftype cgroup_base_files[] = {
 	{
 		.name = "cgroup.stat",
 		.seq_show = cgroup_stat_show,
+	},
+	{
+		.name = "cgroup.freeze",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.seq_show = cgroup_freeze_show,
+		.write = cgroup_freeze_write,
+	},
+	{
+		.name = "cgroup.kill",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.write = cgroup_kill_write,
 	},
 #ifdef CONFIG_PSI
 	{
@@ -5077,12 +5207,22 @@ static struct cgroup *cgroup_create(struct cgroup *parent, const char *name,
 			goto out_kernfs_remove;
 	}
 
+	/* An empty child inherits its parent's effective frozen state. */
+	cgrp->freezer.e_freeze = parent->freezer.e_freeze;
+	if (cgrp->freezer.e_freeze) {
+		set_bit(CGRP_FREEZE, &cgrp->flags);
+		set_bit(CGRP_FROZEN, &cgrp->flags);
+	}
+
 	spin_lock_irq(&css_set_lock);
 	for (tcgrp = cgrp; tcgrp; tcgrp = cgroup_parent(tcgrp)) {
 		cgrp->ancestor_ids[tcgrp->level] = cgroup_id(tcgrp);
 
-		if (tcgrp != cgrp)
+		if (tcgrp != cgrp) {
 			tcgrp->nr_descendants++;
+			if (cgrp->freezer.e_freeze)
+				tcgrp->freezer.nr_frozen_descendants++;
+		}
 	}
 	spin_unlock_irq(&css_set_lock);
 
@@ -5361,6 +5501,8 @@ static int cgroup_destroy_locked(struct cgroup *cgrp)
 	for (tcgrp = cgroup_parent(cgrp); tcgrp; tcgrp = cgroup_parent(tcgrp)) {
 		tcgrp->nr_descendants--;
 		tcgrp->nr_dying_descendants++;
+		if (test_bit(CGRP_FROZEN, &cgrp->flags))
+			tcgrp->freezer.nr_frozen_descendants--;
 	}
 	spin_unlock_irq(&css_set_lock);
 
@@ -5776,6 +5918,7 @@ void cgroup_post_fork(struct task_struct *child)
 {
 	struct cgroup_subsys *ss;
 	int i;
+	bool kill = false;
 
 	/*
 	 * This may race against cgroup_enable_task_cg_lists().  As that
@@ -5808,6 +5951,28 @@ void cgroup_post_fork(struct task_struct *child)
 			cset->nr_tasks++;
 			css_set_move_task(child, NULL, cset, false);
 		}
+
+		/*
+		 * If the cgroup has to be frozen, the new task has too.
+		 * Let's set the JOBCTL_TRAP_FREEZE jobctl bit to get
+		 * the task into the frozen state.
+		 */
+		if (unlikely(cgroup_task_freeze(child))) {
+			spin_lock(&child->sighand->siglock);
+			WARN_ON_ONCE(child->frozen);
+			child->jobctl |= JOBCTL_TRAP_FREEZE;
+			spin_unlock(&child->sighand->siglock);
+
+			/*
+			 * Calling cgroup_update_frozen() isn't required here,
+			 * because it will be called anyway a bit later
+			 * from do_freezer_trap(). So we avoid cgroup's
+			 * transient switch from the frozen state and back.
+			 */
+		}
+
+		kill = test_bit(CGRP_KILL, &cset->dfl_cgrp->flags);
+
 		spin_unlock_irq(&css_set_lock);
 	}
 
@@ -5819,6 +5984,10 @@ void cgroup_post_fork(struct task_struct *child)
 	do_each_subsys_mask(ss, i, have_fork_callback) {
 		ss->fork(child);
 	} while_each_subsys_mask();
+
+	/* Include forks observed while cgroup.kill walks this cgroup. */
+	if (unlikely(kill))
+		do_send_sig_info(SIGKILL, SEND_SIG_NOINFO, child, true);
 }
 
 /**
@@ -5857,6 +6026,14 @@ void cgroup_exit(struct task_struct *tsk)
 		css_set_move_task(tsk, cset, NULL, false);
 		list_add_tail(&tsk->cg_list, &cset->dying_tasks);
 		cset->nr_tasks--;
+
+		if (dl_task(tsk))
+			dec_dl_tasks_cs(tsk);
+
+		WARN_ON_ONCE(cgroup_task_frozen(tsk));
+		if (unlikely(cgroup_task_freeze(tsk)))
+			cgroup_update_frozen(task_dfl_cgroup(tsk));
+
 		spin_unlock_irq(&css_set_lock);
 	} else {
 		get_css_set(cset);

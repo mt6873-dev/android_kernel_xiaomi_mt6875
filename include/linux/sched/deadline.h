@@ -29,4 +29,10 @@ static inline bool dl_time_before(u64 a, u64 b)
 	return (s64)(a - b) < 0;
 }
 
+struct root_domain;
+void dl_add_task_root_domain(struct task_struct *p);
+void dl_clear_root_domain(struct root_domain *rd);
+int dl_bw_alloc(int cpu, u64 bw);
+void dl_bw_free(int cpu, u64 bw);
+
 #endif /* _LINUX_SCHED_DEADLINE_H */

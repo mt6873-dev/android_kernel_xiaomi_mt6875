@@ -16,6 +16,7 @@
  *                    Fabio Checconi <fchecconi@gmail.com>
  */
 #include "sched.h"
+#include <linux/cpuset.h>
 
 #include <linux/slab.h>
 #include <uapi/linux/sched/types.h>
@@ -2220,6 +2221,8 @@ void __init init_sched_dl_class(void)
 
 static void switched_from_dl(struct rq *rq, struct task_struct *p)
 {
+	dec_dl_tasks_cs(p);
+
 	/*
 	 * task_non_contending() can start the "inactive timer" (if the 0-lag
 	 * time is in the future). If the task switches back to dl before
@@ -2259,6 +2262,8 @@ static void switched_from_dl(struct rq *rq, struct task_struct *p)
  */
 static void switched_to_dl(struct rq *rq, struct task_struct *p)
 {
+	inc_dl_tasks_cs(p);
+
 	if (hrtimer_try_to_cancel(&p->dl.inactive_timer) == 1)
 		put_task_struct(p);
 
@@ -2594,6 +2599,71 @@ bool dl_param_changed(struct task_struct *p, const struct sched_attr *attr)
 }
 
 #ifdef CONFIG_SMP
+void dl_add_task_root_domain(struct task_struct *p)
+{
+	struct rq_flags rf;
+	struct rq *rq;
+	struct dl_bw *dl_b;
+
+	raw_spin_lock_irqsave(&p->pi_lock, rf.flags);
+	if (!dl_task(p)) {
+		raw_spin_unlock_irqrestore(&p->pi_lock, rf.flags);
+		return;
+	}
+
+	rq = __task_rq_lock(p, &rf);
+
+	dl_b = &rq->rd->dl_bw;
+	raw_spin_lock(&dl_b->lock);
+
+	__dl_add(dl_b, p->dl.dl_bw, cpumask_weight(rq->rd->span));
+
+	raw_spin_unlock(&dl_b->lock);
+
+	task_rq_unlock(rq, p, &rf);
+}
+
+void dl_clear_root_domain(struct root_domain *rd)
+{
+	unsigned long flags;
+
+	raw_spin_lock_irqsave(&rd->dl_bw.lock, flags);
+	rd->dl_bw.total_bw = 0;
+	raw_spin_unlock_irqrestore(&rd->dl_bw.lock, flags);
+}
+
+int dl_bw_alloc(int cpu, u64 bw)
+{
+	struct dl_bw *dl_b;
+	unsigned long flags;
+	int cpus, ret = 0;
+
+	rcu_read_lock_sched();
+	dl_b = dl_bw_of(cpu);
+	raw_spin_lock_irqsave(&dl_b->lock, flags);
+	cpus = dl_bw_cpus(cpu);
+	if (__dl_overflow(dl_b, cpus, 0, bw))
+		ret = -EBUSY;
+	else
+		__dl_add(dl_b, bw, cpus);
+	raw_spin_unlock_irqrestore(&dl_b->lock, flags);
+	rcu_read_unlock_sched();
+	return ret;
+}
+
+void dl_bw_free(int cpu, u64 bw)
+{
+	struct dl_bw *dl_b;
+	unsigned long flags;
+
+	rcu_read_lock_sched();
+	dl_b = dl_bw_of(cpu);
+	raw_spin_lock_irqsave(&dl_b->lock, flags);
+	__dl_clear(dl_b, bw, dl_bw_cpus(cpu));
+	raw_spin_unlock_irqrestore(&dl_b->lock, flags);
+	rcu_read_unlock_sched();
+}
+
 int dl_task_can_attach(struct task_struct *p, const struct cpumask *cs_cpus_allowed)
 {
 	unsigned int dest_cpu = cpumask_any_and(cpu_active_mask,

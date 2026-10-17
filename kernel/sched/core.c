@@ -5413,6 +5413,7 @@ static int __sched_setscheduler(struct task_struct *p,
 	int reset_on_fork;
 	int queue_flags = DEQUEUE_SAVE | DEQUEUE_MOVE | DEQUEUE_NOCLOCK;
 	struct rq *rq;
+	bool cpuset_locked = false;
 
 	/* The pi code expects interrupts enabled */
 	BUG_ON(pi && in_interrupt());
@@ -5501,6 +5502,12 @@ recheck:
 			return retval;
 	}
 
+	/* Deadline admission requires stable cpuset partition masks. */
+	if (dl_policy(policy) || dl_policy(p->policy)) {
+		cpuset_lock();
+		cpuset_locked = true;
+	}
+
 	/*
 	 * Make sure no PI-waiters arrive (or leave) while we are
 	 * changing the priority of the task:
@@ -5516,6 +5523,10 @@ recheck:
 	 */
 	if (p == rq->stop) {
 		task_rq_unlock(rq, p, &rf);
+		if (cpuset_locked) {
+			cpuset_unlock();
+			cpuset_locked = false;
+		}
 		return -EINVAL;
 	}
 
@@ -5533,6 +5544,10 @@ recheck:
 
 		p->sched_reset_on_fork = reset_on_fork;
 		task_rq_unlock(rq, p, &rf);
+		if (cpuset_locked) {
+			cpuset_unlock();
+			cpuset_locked = false;
+		}
 		return 0;
 	}
 change:
@@ -5547,6 +5562,10 @@ change:
 				task_group(p)->rt_bandwidth.rt_runtime == 0 &&
 				!task_group_is_autogroup(task_group(p))) {
 			task_rq_unlock(rq, p, &rf);
+			if (cpuset_locked) {
+				cpuset_unlock();
+				cpuset_locked = false;
+			}
 			return -EPERM;
 		}
 #endif
@@ -5562,6 +5581,10 @@ change:
 			if (!cpumask_subset(span, &p->cpus_allowed) ||
 			    rq->rd->dl_bw.bw == 0) {
 				task_rq_unlock(rq, p, &rf);
+				if (cpuset_locked) {
+					cpuset_unlock();
+					cpuset_locked = false;
+				}
 				return -EPERM;
 			}
 		}
@@ -5572,6 +5595,10 @@ change:
 	if (unlikely(oldpolicy != -1 && oldpolicy != p->policy)) {
 		policy = oldpolicy = -1;
 		task_rq_unlock(rq, p, &rf);
+		if (cpuset_locked) {
+			cpuset_unlock();
+			cpuset_locked = false;
+		}
 		goto recheck;
 	}
 
@@ -5582,6 +5609,10 @@ change:
 	 */
 	if ((dl_policy(policy) || dl_task(p)) && sched_dl_overflow(p, policy, attr)) {
 		task_rq_unlock(rq, p, &rf);
+		if (cpuset_locked) {
+			cpuset_unlock();
+			cpuset_locked = false;
+		}
 		return -EBUSY;
 	}
 
@@ -5629,6 +5660,10 @@ change:
 	/* Avoid rq from going away on us: */
 	preempt_disable();
 	task_rq_unlock(rq, p, &rf);
+	if (cpuset_locked) {
+		cpuset_unlock();
+		cpuset_locked = false;
+	}
 
 	if (pi)
 		rt_mutex_adjust_pi(p);
@@ -6770,31 +6805,12 @@ int cpuset_cpumask_can_shrink(const struct cpumask *cur,
 	return ret;
 }
 
-int task_can_attach(struct task_struct *p,
-		    const struct cpumask *cs_cpus_allowed)
+int task_can_attach(struct task_struct *p)
 {
-	int ret = 0;
-
-	/*
-	 * Kthreads which disallow setaffinity shouldn't be moved
-	 * to a new cpuset; we don't want to change their CPU
-	 * affinity and isolating such threads by their set of
-	 * allowed nodes is unnecessary.  Thus, cpusets are not
-	 * applicable for such threads.  This prevents checking for
-	 * success of set_cpus_allowed_ptr() on all attached tasks
-	 * before cpus_allowed may be changed.
-	 */
-	if (p->flags & PF_NO_SETAFFINITY) {
-		ret = -EINVAL;
-		goto out;
-	}
-
-	if (dl_task(p) && !cpumask_intersects(task_rq(p)->rd->span,
-					      cs_cpus_allowed))
-		ret = dl_task_can_attach(p, cs_cpus_allowed);
-
-out:
-	return ret;
+	/* Deadline reservation and rollback are handled by cpuset_can_attach(). */
+	if (p->flags & PF_NO_SETAFFINITY)
+		return -EINVAL;
+	return 0;
 }
 
 bool sched_smp_initialized __read_mostly;
