@@ -17,6 +17,7 @@
 #include <linux/refcount.h>
 #include <linux/percpu-refcount.h>
 #include <linux/percpu-rwsem.h>
+#include <linux/u64_stats_sync.h>
 #include <linux/workqueue.h>
 #include <linux/bpf-cgroup.h>
 #include <linux/psi_types.h>
@@ -275,6 +276,77 @@ struct css_set {
 	struct rcu_head rcu_head;
 };
 
+struct cgroup_base_stat {
+	struct task_cputime cputime;
+
+#ifdef CONFIG_SCHED_CORE
+	u64 forceidle_sum;
+#endif
+};
+
+/*
+ * rstat - cgroup scalable recursive statistics.  Accounting is done
+ * per-cpu in cgroup_rstat_cpu which is then lazily propagated up the
+ * hierarchy on reads.
+ *
+ * When a stat gets updated, the cgroup_rstat_cpu and its ancestors are
+ * linked into the updated tree.  On the following read, propagation only
+ * considers and consumes the updated tree.  This makes reading O(the
+ * number of descendants which have been active since last read) instead of
+ * O(the total number of descendants).
+ *
+ * This is important because there can be a lot of (draining) cgroups which
+ * aren't active and stat may be read frequently.  The combination can
+ * become very expensive.  By propagating selectively, increasing reading
+ * frequency decreases the cost of each read.
+ *
+ * This struct hosts both the fields which implement the above -
+ * updated_children and updated_next - and the fields which track basic
+ * resource statistics on top of it - bsync, bstat and last_bstat.
+ */
+struct cgroup_rstat_cpu {
+	/*
+	 * ->bsync protects ->bstat.  These are the only fields which get
+	 * updated in the hot path.
+	 */
+	struct u64_stats_sync bsync;
+	struct cgroup_base_stat bstat;
+
+	/*
+	 * Snapshots at the last reading.  These are used to calculate the
+	 * deltas to propagate to the global counters.
+	 */
+	struct cgroup_base_stat last_bstat;
+
+	/*
+	 * This field is used to record the cumulative per-cpu time of
+	 * the cgroup and its descendants. Currently it can be read via
+	 * eBPF/drgn etc, and we are still trying to determine how to
+	 * expose it in the cgroupfs interface.
+	 */
+	struct cgroup_base_stat subtree_bstat;
+
+	/*
+	 * Snapshots at the last reading. These are used to calculate the
+	 * deltas to propagate to the per-cpu subtree_bstat.
+	 */
+	struct cgroup_base_stat last_subtree_bstat;
+
+	/*
+	 * Child cgroups with stat updates on this cpu since the last read
+	 * are linked on the parent's ->updated_children through
+	 * ->updated_next.
+	 *
+	 * In addition to being more compact, singly-linked list pointing
+	 * to the cgroup makes it unnecessary for each per-cpu struct to
+	 * point back to the associated cgroup.
+	 *
+	 * Protected by per-cpu cgroup_rstat_cpu_lock.
+	 */
+	struct cgroup *updated_children;	/* terminated by self cgroup */
+	struct cgroup *updated_next;		/* NULL iff not on the list */
+};
+
 struct cgroup_freezer_state {
 	/* User-requested and effective hierarchical freeze state. */
 	bool freeze;
@@ -403,6 +475,13 @@ struct cgroup {
 	struct cgroup_bpf bpf;
 
 	/* ids of the ancestors at each level including self */
+	/* Default-hierarchy CPU accounting; keep existing fields at their offsets. */
+	struct cgroup_rstat_cpu __percpu *rstat_cpu;
+	struct cgroup *rstat_flush_next;
+	struct cgroup_base_stat last_bstat;
+	struct cgroup_base_stat bstat;
+	struct prev_cputime prev_cputime;
+
 	u64 ancestor_ids[];
 };
 
@@ -633,6 +712,9 @@ struct cgroup_subsys {
 	 * specifies the mask of subsystems that this one depends on.
 	 */
 	unsigned int depends_on;
+
+	int (*css_extra_stat_show)(struct seq_file *sf,
+				   struct cgroup_subsys_state *css);
 };
 
 extern struct percpu_rw_semaphore cgroup_threadgroup_rwsem;

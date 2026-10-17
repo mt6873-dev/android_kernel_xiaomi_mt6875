@@ -51,6 +51,7 @@
 #include <linux/kthread.h>
 #include <linux/atomic.h>
 #include <linux/cpuset.h>
+#include <linux/sched/cputime.h>
 #include <linux/sched/deadline.h>
 #include <linux/proc_ns.h>
 #include <linux/nsproxy.h>
@@ -152,7 +153,8 @@ static struct static_key_true *cgroup_subsys_on_dfl_key[] = {
  * unattached - it never has more than a single cgroup, and all tasks are
  * part of that cgroup.
  */
-struct cgroup_root cgrp_dfl_root;
+static DEFINE_PER_CPU(struct cgroup_rstat_cpu, cgrp_dfl_root_rstat_cpu);
+struct cgroup_root cgrp_dfl_root = { .cgrp.rstat_cpu = &cgrp_dfl_root_rstat_cpu };
 EXPORT_SYMBOL_GPL(cgrp_dfl_root);
 
 /*
@@ -1282,6 +1284,7 @@ static void cgroup_destroy_root(struct cgroup_root *root)
 
 	mutex_unlock(&cgroup_mutex);
 
+	cgroup_rstat_exit(cgrp);
 	kernfs_destroy_root(root->kf_root);
 	cgroup_free_root(root);
 }
@@ -1899,6 +1902,7 @@ static void init_cgroup_housekeeping(struct cgroup *cgrp)
 	cgrp->dom_cgrp = cgrp;
 	cgrp->max_descendants = INT_MAX;
 	cgrp->max_depth = INT_MAX;
+	prev_cputime_init(&cgrp->prev_cputime);
 
 	for_each_subsys(ss, ssid)
 		INIT_LIST_HEAD(&cgrp->e_csets[ssid]);
@@ -1975,9 +1979,13 @@ int cgroup_setup_root(struct cgroup_root *root, u16 ss_mask, int ref_flags)
 	if (ret)
 		goto destroy_root;
 
-	ret = rebind_subsystems(root, ss_mask);
+	ret = cgroup_rstat_init(root_cgrp);
 	if (ret)
 		goto destroy_root;
+
+	ret = rebind_subsystems(root, ss_mask);
+	if (ret)
+		goto exit_stats;
 
 	if (root == &cgrp_dfl_root) {
 		ret = cgroup_bpf_inherit(root_cgrp);
@@ -2012,6 +2020,8 @@ int cgroup_setup_root(struct cgroup_root *root, u16 ss_mask, int ref_flags)
 	ret = 0;
 	goto out;
 
+exit_stats:
+	cgroup_rstat_exit(root_cgrp);
 destroy_root:
 	kernfs_destroy_root(root->kf_root);
 	root->kf_root = NULL;
@@ -4807,6 +4817,21 @@ static ssize_t cgroup_kill_write(struct kernfs_open_file *of, char *buf,
 	return ret ?: nbytes;
 }
 
+static int cpu_stat_show(struct seq_file *seq, void *v)
+{
+	cgroup_base_stat_cputime_show(seq);
+#ifdef CONFIG_CGROUP_SCHED
+	{
+		struct cgroup *cgrp = seq_css(seq)->cgroup;
+		struct cgroup_subsys_state *css = cgroup_css(cgrp, &cpu_cgrp_subsys);
+
+		if (css && css->ss->css_extra_stat_show)
+			return css->ss->css_extra_stat_show(seq, css);
+	}
+#endif
+	return 0;
+}
+
 static struct cftype cgroup_base_files[] = {
 	{
 		.name = "cgroup.type",
@@ -4857,6 +4882,10 @@ static struct cftype cgroup_base_files[] = {
 		.name = "cgroup.max.depth",
 		.seq_show = cgroup_max_depth_show,
 		.write = cgroup_max_depth_write,
+	},
+	{
+		.name = "cpu.stat",
+		.seq_show = cpu_stat_show,
 	},
 	{
 		.name = "cgroup.stat",
@@ -4961,6 +4990,7 @@ static void css_free_work_fn(struct work_struct *work)
 			kernfs_put(cgrp->kn);
 			if (cgroup_on_dfl(cgrp))
 				psi_cgroup_free(cgrp);
+			cgroup_rstat_exit(cgrp);
 			kfree(cgrp);
 		} else {
 			/*
@@ -5004,6 +5034,7 @@ static void css_release_work_fn(struct work_struct *work)
 
 		/* cgroup release path */
 		TRACE_CGROUP_PATH(release, cgrp);
+		cgroup_rstat_flush(cgrp);
 
 		spin_lock_irq(&css_set_lock);
 		for (tcgrp = cgroup_parent(cgrp); tcgrp;
@@ -5187,11 +5218,15 @@ static struct cgroup *cgroup_create(struct cgroup *parent, const char *name,
 	if (ret)
 		goto out_free_cgrp;
 
+	ret = cgroup_rstat_init(cgrp);
+	if (ret)
+		goto out_cancel_ref;
+
 	/* create the directory */
 	kn = kernfs_create_dir(parent->kn, name, mode, cgrp);
 	if (IS_ERR(kn)) {
 		ret = PTR_ERR(kn);
-		goto out_cancel_ref;
+		goto out_stat_exit;
 	}
 	cgrp->kn = kn;
 
@@ -5258,6 +5293,8 @@ static struct cgroup *cgroup_create(struct cgroup *parent, const char *name,
 
 out_kernfs_remove:
 	kernfs_remove(cgrp->kn);
+out_stat_exit:
+	cgroup_rstat_exit(cgrp);
 out_cancel_ref:
 	percpu_ref_exit(&cgrp->self.refcnt);
 out_free_cgrp:
@@ -5646,6 +5683,8 @@ int __init cgroup_init(void)
 	BUG_ON(percpu_init_rwsem(&cgroup_threadgroup_rwsem));
 	BUG_ON(cgroup_init_cftypes(NULL, cgroup_base_files));
 	BUG_ON(cgroup_init_cftypes(NULL, cgroup1_base_files));
+
+	cgroup_rstat_boot();
 
 	/*
 	 * The latency of the synchronize_sched() is too high for cgroups,
