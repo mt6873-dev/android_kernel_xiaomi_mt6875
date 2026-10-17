@@ -14,6 +14,12 @@ struct page_counter {
 	/* legacy */
 	unsigned long watermark;
 	unsigned long failcnt;
+
+	/* Effective hierarchical memory.min/low protection and utilization. */
+	unsigned long emin, elow;
+	atomic_long_t min_usage, children_min_usage;
+	atomic_long_t low_usage, children_low_usage;
+	unsigned long min, low, high;
 };
 
 #if BITS_PER_LONG == 32
@@ -28,6 +34,12 @@ static inline void page_counter_init(struct page_counter *counter,
 	atomic_long_set(&counter->count, 0);
 	counter->limit = PAGE_COUNTER_MAX;
 	counter->parent = parent;
+	counter->min = counter->low = counter->emin = counter->elow = 0;
+	counter->high = PAGE_COUNTER_MAX;
+	atomic_long_set(&counter->min_usage, 0);
+	atomic_long_set(&counter->children_min_usage, 0);
+	atomic_long_set(&counter->low_usage, 0);
+	atomic_long_set(&counter->children_low_usage, 0);
 }
 
 static inline unsigned long page_counter_read(struct page_counter *counter)
@@ -41,6 +53,9 @@ bool page_counter_try_charge(struct page_counter *counter,
 			     unsigned long nr_pages,
 			     struct page_counter **fail);
 void page_counter_uncharge(struct page_counter *counter, unsigned long nr_pages);
+void page_counter_set_min(struct page_counter *counter, unsigned long nr_pages);
+void page_counter_set_low(struct page_counter *counter, unsigned long nr_pages);
+int page_counter_set_max(struct page_counter *counter, unsigned long nr_pages);
 int page_counter_limit(struct page_counter *counter, unsigned long limit);
 int page_counter_memparse(const char *buf, const char *max,
 			  unsigned long *nr_pages);

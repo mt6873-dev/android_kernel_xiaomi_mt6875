@@ -251,6 +251,8 @@ struct mem_cgroup {
 	atomic_long_t		stat[MEMCG_NR_STAT];
 	atomic_long_t		events[NR_VM_EVENT_ITEMS];
 	atomic_long_t memory_events[MEMCG_NR_MEMORY_EVENTS];
+	atomic_long_t memory_events_local[MEMCG_NR_MEMORY_EVENTS];
+	struct cgroup_file events_local_file;
 
 	unsigned long		socket_pressure;
 
@@ -302,6 +304,9 @@ static inline bool mem_cgroup_disabled(void)
 {
 	return !cgroup_subsys_enabled(memory_cgrp_subsys);
 }
+
+void mem_cgroup_calculate_protection(struct mem_cgroup *root,
+				     struct mem_cgroup *memcg);
 
 bool mem_cgroup_low(struct mem_cgroup *root, struct mem_cgroup *memcg);
 
@@ -720,9 +725,99 @@ static inline void count_memcg_event_mm(struct mm_struct *mm,
 	rcu_read_unlock();
 }
 
+static inline unsigned long mem_cgroup_size(struct mem_cgroup *memcg)
+{
+	return page_counter_read(&memcg->memory);
+}
+
+static inline void mem_cgroup_protection(struct mem_cgroup *root,
+					 struct mem_cgroup *memcg,
+					 unsigned long *min,
+					 unsigned long *low)
+{
+	*min = *low = 0;
+
+	if (mem_cgroup_disabled())
+		return;
+
+	/*
+	 * There is no reclaim protection applied to a targeted reclaim.
+	 * We are special casing this specific case here because
+	 * mem_cgroup_calculate_protection is not robust enough to keep
+	 * the protection invariant for calculated effective values for
+	 * parallel reclaimers with different reclaim target. This is
+	 * especially a problem for tail memcgs (as they have pages on LRU)
+	 * which would want to have effective values 0 for targeted reclaim
+	 * but a different value for external reclaim.
+	 *
+	 * Example
+	 * Let's have global and A's reclaim in parallel:
+	 *  |
+	 *  A (low=2G, usage = 3G, max = 3G, children_low_usage = 1.5G)
+	 *  |\
+	 *  | C (low = 1G, usage = 2.5G)
+	 *  B (low = 1G, usage = 0.5G)
+	 *
+	 * For the global reclaim
+	 * A.elow = A.low
+	 * B.elow = min(B.usage, B.low) because children_low_usage <= A.elow
+	 * C.elow = min(C.usage, C.low)
+	 *
+	 * With the effective values resetting we have A reclaim
+	 * A.elow = 0
+	 * B.elow = B.low
+	 * C.elow = C.low
+	 *
+	 * If the global reclaim races with A's reclaim then
+	 * B.elow = C.elow = 0 because children_low_usage > A.elow)
+	 * is possible and reclaiming B would be violating the protection.
+	 *
+	 */
+	if (root == memcg)
+		return;
+
+	*min = READ_ONCE(memcg->memory.emin);
+	*low = READ_ONCE(memcg->memory.elow);
+}
+
+static inline bool mem_cgroup_unprotected(struct mem_cgroup *target,
+					  struct mem_cgroup *memcg)
+{
+	/*
+	 * The root memcg doesn't account charges, and doesn't support
+	 * protection. The target memcg's protection is ignored, see
+	 * mem_cgroup_calculate_protection() and mem_cgroup_protection()
+	 */
+	return mem_cgroup_disabled() || mem_cgroup_is_root(memcg) ||
+		memcg == target;
+}
+
+static inline bool mem_cgroup_below_low(struct mem_cgroup *target,
+					struct mem_cgroup *memcg)
+{
+	if (mem_cgroup_unprotected(target, memcg))
+		return false;
+
+	return READ_ONCE(memcg->memory.elow) >=
+		page_counter_read(&memcg->memory);
+}
+
+static inline bool mem_cgroup_below_min(struct mem_cgroup *target,
+					struct mem_cgroup *memcg)
+{
+	if (mem_cgroup_unprotected(target, memcg))
+		return false;
+
+	return READ_ONCE(memcg->memory.emin) >=
+		page_counter_read(&memcg->memory);
+}
+
 static inline void memcg_memory_event(struct mem_cgroup *memcg,
 				      enum memcg_memory_event event)
 {
+	atomic_long_inc(&memcg->memory_events_local[event]);
+	cgroup_file_notify(&memcg->events_local_file);
+
 	do {
 		atomic_long_inc(&memcg->memory_events[event]);
 		cgroup_file_notify(&memcg->events_file);
@@ -778,6 +873,23 @@ static inline void memcg_memory_event_mm(struct mm_struct *mm,
 					 enum memcg_memory_event event)
 {
 }
+
+static inline unsigned long mem_cgroup_size(struct mem_cgroup *memcg)
+{
+	return 0;
+}
+
+static inline void mem_cgroup_calculate_protection(struct mem_cgroup *root,
+						  struct mem_cgroup *memcg) { }
+static inline void mem_cgroup_protection(struct mem_cgroup *root,
+		struct mem_cgroup *memcg, unsigned long *min, unsigned long *low)
+{
+	*min = *low = 0;
+}
+static inline bool mem_cgroup_below_low(struct mem_cgroup *root,
+					struct mem_cgroup *memcg) { return false; }
+static inline bool mem_cgroup_below_min(struct mem_cgroup *root,
+					struct mem_cgroup *memcg) { return false; }
 
 static inline bool mem_cgroup_low(struct mem_cgroup *root,
 				  struct mem_cgroup *memcg)

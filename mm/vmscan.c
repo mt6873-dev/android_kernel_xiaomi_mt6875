@@ -2462,9 +2462,27 @@ out:
 		int file = is_file_lru(lru);
 		unsigned long size;
 		unsigned long scan;
+		unsigned long min, low;
 
 		size = lruvec_lru_size(lruvec, lru, sc->reclaim_idx);
-		scan = size >> sc->priority;
+		mem_cgroup_protection(sc->target_mem_cgroup, memcg, &min, &low);
+		if (min || low) {
+			unsigned long cgroup_size = mem_cgroup_size(memcg);
+			unsigned long protection;
+
+			if (!sc->memcg_low_reclaim && low > min) {
+				protection = low;
+				sc->memcg_low_skipped = 1;
+			} else {
+				protection = min;
+			}
+			cgroup_size = max(cgroup_size, protection);
+			scan = size - size * protection / (cgroup_size + 1);
+			scan = max(scan, SWAP_CLUSTER_MAX);
+		} else {
+			scan = size;
+		}
+		scan >>= sc->priority;
 		/*
 		 * If the cgroup's already been deleted, make sure to
 		 * scrape out the remaining cache.
@@ -2768,7 +2786,10 @@ static bool shrink_node(pg_data_t *pgdat, struct scan_control *sc)
 			unsigned long reclaimed;
 			unsigned long scanned;
 
-			if (mem_cgroup_low(root, memcg)) {
+			mem_cgroup_calculate_protection(root, memcg);
+			if (mem_cgroup_below_min(root, memcg))
+				continue;
+			if (mem_cgroup_below_low(root, memcg)) {
 				if (!sc->memcg_low_reclaim) {
 					sc->memcg_low_skipped = 1;
 					continue;

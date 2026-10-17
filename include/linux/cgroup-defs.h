@@ -97,6 +97,7 @@ enum {
 	 * Enable legacy local memory.events.
 	 */
 	CGRP_ROOT_MEMORY_LOCAL_EVENTS = (1 << 5),
+	CGRP_ROOT_MEMORY_RECURSIVE_PROT = (1 << 18),
 };
 
 /* cftype->flags */
