@@ -1,5 +1,9 @@
 # Android cgroup v2 and cached-app freezer
 
+For the newer Android 17 work, see [compatibility scope](android17-compatibility.md)
+and [backport status](6x-backport-status.md). The account below describes the
+earlier freezer-only implementation and its Android 15 integration.
+
 This backport supplies the real cgroup v2 freezer, not a `SIGSTOP` wrapper.
 It retains the vendor cgroup v1 controllers used by FPSGO and Android 12
 vendor services. It does not require CFI or LTO.

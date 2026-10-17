@@ -84,29 +84,20 @@ static int cg_prepare_for_wait(const char *cgroup)
  */
 static int cg_wait_for(int fd)
 {
-	int ret = -1;
-	struct pollfd fds = {
-		.fd = fd,
-		.events = POLLIN,
-	};
+	struct pollfd fds = { .fd = fd, .events = POLLIN };
+	char events[4096];
+	int ret;
 
-	while (true) {
+	do {
 		ret = poll(&fds, 1, 10000);
-
-		if (ret == -1) {
-			if (errno == EINTR)
-				continue;
-			debug("Error: poll() failed\n");
-			break;
-		}
-
-		if (ret > 0 && fds.revents & POLLIN) {
-			ret = 0;
-			break;
-		}
-	}
-
-	return ret;
+	} while (ret < 0 && errno == EINTR);
+	if (ret <= 0 || !(fds.revents & POLLIN))
+		return -1;
+	/* Consume transient populated events before waiting for frozen. */
+	do {
+		ret = read(fd, events, sizeof(events));
+	} while (ret < 0 && errno == EINTR);
+	return ret > 0 ? 0 : -1;
 }
 
 /*
@@ -128,13 +119,12 @@ static int cg_enter_and_wait_for_frozen(const char *cgroup, int pid,
 		goto out;
 
 	for (attempts = 0; attempts < 10; attempts++) {
-		ret = cg_wait_for(fd);
-		if (ret)
-			break;
-
+		/* The desired state may already hold without another event. */
 		ret = cg_check_frozen(cgroup, frozen);
-		if (ret)
-			continue;
+		if (!ret)
+			break;
+		if (cg_wait_for(fd))
+			break;
 	}
 
 out:
