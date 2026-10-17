@@ -1779,6 +1779,9 @@ static int parse_cgroup_root_flags(char *data, unsigned int *root_flags)
 		if (!strcmp(token, "nsdelegate")) {
 			*root_flags |= CGRP_ROOT_NS_DELEGATE;
 			continue;
+		} else if (!strcmp(token, "memory_recursiveprot")) {
+			*root_flags |= CGRP_ROOT_MEMORY_RECURSIVE_PROT;
+			continue;
 		} else if(!strcmp(token, "memory_localevents")) {
 			*root_flags |= CGRP_ROOT_MEMORY_LOCAL_EVENTS;
 			continue;
@@ -1803,6 +1806,10 @@ static void apply_cgroup_root_flags(unsigned int root_flags)
 			cgrp_dfl_root.flags |= CGRP_ROOT_MEMORY_LOCAL_EVENTS;
 		else
 			cgrp_dfl_root.flags &= ~CGRP_ROOT_MEMORY_LOCAL_EVENTS;
+		if (root_flags & CGRP_ROOT_MEMORY_RECURSIVE_PROT)
+			cgrp_dfl_root.flags |= CGRP_ROOT_MEMORY_RECURSIVE_PROT;
+		else
+			cgrp_dfl_root.flags &= ~CGRP_ROOT_MEMORY_RECURSIVE_PROT;
 	}
 }
 
@@ -1812,6 +1819,8 @@ static int cgroup_show_options(struct seq_file *seq, struct kernfs_root *kf_root
 		seq_puts(seq, ",nsdelegate");
 	if (cgrp_dfl_root.flags & CGRP_ROOT_MEMORY_LOCAL_EVENTS)
 		seq_puts(seq, ",memory_localevents");
+	if (cgrp_dfl_root.flags & CGRP_ROOT_MEMORY_RECURSIVE_PROT)
+		seq_puts(seq, ",memory_recursiveprot");
 	return 0;
 }
 
@@ -4823,10 +4832,20 @@ static int cpu_stat_show(struct seq_file *seq, void *v)
 #ifdef CONFIG_CGROUP_SCHED
 	{
 		struct cgroup *cgrp = seq_css(seq)->cgroup;
-		struct cgroup_subsys_state *css = cgroup_css(cgrp, &cpu_cgrp_subsys);
+		struct cgroup_subsys_state *css;
+		int ret = 0;
 
-		if (css && css->ss->css_extra_stat_show)
-			return css->ss->css_extra_stat_show(seq, css);
+		rcu_read_lock();
+		css = cgroup_css(cgrp, &cpu_cgrp_subsys);
+		if (css && !css_tryget_online(css))
+			css = NULL;
+		rcu_read_unlock();
+		if (css) {
+			if (css->ss->css_extra_stat_show)
+				ret = css->ss->css_extra_stat_show(seq, css);
+			css_put(css);
+		}
+		return ret;
 	}
 #endif
 	return 0;

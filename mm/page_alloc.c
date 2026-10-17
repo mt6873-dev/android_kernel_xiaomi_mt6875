@@ -4060,6 +4060,15 @@ restart:
 	if (!ac->preferred_zoneref->zone)
 		goto nopage;
 
+	/* Fail hardwall allocations when the cpuset has no usable kernel zone. */
+	if (cpusets_insane_config() && (gfp_mask & __GFP_HARDWALL)) {
+		struct zoneref *z = first_zones_zonelist(ac->zonelist,
+				ac->high_zoneidx, &cpuset_current_mems_allowed);
+
+		if (!z->zone)
+			goto nopage;
+	}
+
 	if (gfp_mask & __GFP_KSWAPD_RECLAIM)
 		wake_all_kswapds(order, ac);
 
