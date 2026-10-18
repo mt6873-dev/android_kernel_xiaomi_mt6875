@@ -37,6 +37,14 @@
 #include <linux/sched.h>
 #include <linux/sched/clock.h>
 #include <linux/slab.h>
+
+/* TEMP DIAG (revert after collecting logs): AAO ring buffer field dump.
+ * The AAO dump starts at +3069..3075 (0xC03) instead of 0 and the AE
+ * flux index is ~1024x too small, so dump what HAL actually filled into
+ * ring_buf[_aao_].data[read_idx] (base_vAddr/size/memID) together with
+ * the AAO DMA target register.  Grep for [ISP][DIAG AAORAW2].
+ */
+#define ISP_TEMP_DIAG_AAO_RAW2 1
 #include <linux/spinlock.h>
 #include <linux/types.h>
 #include <linux/uaccess.h>
@@ -11706,6 +11714,31 @@ LB_CAM_SOF_IGNORE:
 					     [ISP_WAITQ_HEAD_IRQ_HW_P1_DONE]);
 	}
 	if (DmaStatus & AAO_DONE_ST) {
+#ifdef ISP_TEMP_DIAG_AAO_RAW2
+		{
+			static int aao_raw2_cnt;
+			unsigned int aao_reg = ISP_RD32(CAM_REG_AAO_BASE_ADDR(module));
+			unsigned int h_va = 0, h_pa = 0, h_size = 0, h_memid = 0;
+			unsigned int ri = 0, st = 0;
+
+			if (pstRTBuf[module] != NULL) {
+				ri = pstRTBuf[module]->ring_buf[_aao_].read_idx;
+				st = pstRTBuf[module]->ring_buf[_aao_].start;
+				if (ri < ISP_RT_BUF_SIZE) {
+					h_va = (unsigned int)pstRTBuf[module]->ring_buf[_aao_].data[ri].base_vAddr;
+					h_pa = pstRTBuf[module]->ring_buf[_aao_].data[ri].base_pAddr;
+					h_size = pstRTBuf[module]->ring_buf[_aao_].data[ri].size;
+					h_memid = pstRTBuf[module]->ring_buf[_aao_].data[ri].memID;
+				}
+			}
+			if (aao_raw2_cnt < 8 || (aao_raw2_cnt % 1000) == 0)
+				pr_info("[ISP][DIAG AAORAW2] m%d cnt=%d reg=0x%x ri=%u st=%u va=0x%x pa=0x%x sz=%u id=%u diff=%d\n",
+					module, aao_raw2_cnt, aao_reg, ri, st,
+					h_va, h_pa, h_size, h_memid,
+					(int)(aao_reg - h_pa));
+			aao_raw2_cnt++;
+		}
+#endif
 		wake_up_interruptible(
 			&IspInfo.WaitQHeadCam[ISP_GetWaitQCamIndex(module)]
 					     [ISP_WAITQ_HEAD_IRQ_AAO_DONE]);
