@@ -102,8 +102,9 @@ ccflags-y += -DMTK_GPUFREQ_V1
 #ccflags-y += -DGED_KPI_MET_DEBUG
 ccflags-y += -DMTK_GED_KPI
 ccflags-y += -DGED_KPI_CPU_BOOST
-ccflags-y += -DGED_SKI_SUPPORT
-ged-y += src/ged_ski.o
+# GED_SKI_SUPPORT/ged_ski.c: the source file does not exist in this tree and
+# A12 dropped it (OPPO mt6873 source has no such entry; official vmlinux has
+# no ged_ski symbols either), so don't reference the missing object.
 
 ifeq ($(CONFIG_MTK_GPU_COMMON_DVFS_SUPPORT),y)
 ccflags-y += -DGED_ENABLE_FB_DVFS
