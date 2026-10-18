@@ -36,7 +36,11 @@
 #include <linux/tracepoint.h>
 #include "mnoc_hw.h"
 TRACE_EVENT(mnoc_pmu_polling,
-	TP_PROTO(u32 c[NR_MNOC_PMU_CNTR]),
+	/* array parameter decays to pointer anyway; the [] form makes
+	 * 5.10-bpf_probe.h CAST_TO_U64() emit -Wsizeof-array-argument, which is
+	 * fatal under drivers/misc/mediatek -Werror (CONFIG_BPF_EVENTS=y)
+	 */
+	TP_PROTO(u32 *c),
 	TP_ARGS(c),
 	TP_STRUCT__entry(
 		__array(u32, c, NR_MNOC_PMU_CNTR)
