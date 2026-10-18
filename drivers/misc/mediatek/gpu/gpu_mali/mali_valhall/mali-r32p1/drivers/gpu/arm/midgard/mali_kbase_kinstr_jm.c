@@ -47,7 +47,12 @@
 #include <linux/version.h>
 #include <linux/wait.h>
 
-#if KERNEL_VERSION(5, 1, 0) <= LINUX_VERSION_CODE
+/* build_bug.h (and its static_assert/__static_assert macros) is provided by
+ * the 4.19/5.10 backport series even though LINUX_VERSION_CODE still
+ * reports 4.14, so don't define the macros again (clang -Wmacro-redefined
+ * is fatal here).
+ */
+#if KERNEL_VERSION(5, 1, 0) <= LINUX_VERSION_CODE || defined(static_assert)
 #include <linux/build_bug.h>
 #else
 // Stringify the expression if no message is given.
