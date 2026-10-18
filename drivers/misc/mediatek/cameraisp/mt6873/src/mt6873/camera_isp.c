@@ -37,13 +37,6 @@
 #include <linux/sched.h>
 #include <linux/sched/clock.h>
 #include <linux/slab.h>
-
-/* TEMP DIAG (revert after collecting logs): dump the AAO DMA target
- * address against the HAL-submitted buffer address to locate where the
- * 28-byte (7 u32) layout offset between our AAO dump and the stock dump
- * comes from.  Wrapped so the change is a single revert.
- */
-#define ISP_TEMP_DIAG_AAO_RAW 1
 #include <linux/spinlock.h>
 #include <linux/types.h>
 #include <linux/uaccess.h>
@@ -11713,31 +11706,6 @@ LB_CAM_SOF_IGNORE:
 					     [ISP_WAITQ_HEAD_IRQ_HW_P1_DONE]);
 	}
 	if (DmaStatus & AAO_DONE_ST) {
-#ifdef ISP_TEMP_DIAG_AAO_RAW
-		{
-			static int aao_raw_cnt;
-			unsigned int aao_reg = ISP_RD32(CAM_REG_AAO_BASE_ADDR(module));
-			unsigned int hal_pa = 0;
-			unsigned int hal_pa_next = 0;
-			if (pstRTBuf[module] != NULL) {
-				unsigned int ri =
-					pstRTBuf[module]->ring_buf[_aao_].read_idx;
-				if (ri < ISP_RT_BUF_SIZE) {
-					hal_pa = pstRTBuf[module]->ring_buf[_aao_]
-						 .data[ri].base_pAddr;
-					if ((ri + 1) < ISP_RT_BUF_SIZE)
-						hal_pa_next =
-						  pstRTBuf[module]->ring_buf[_aao_]
-						  .data[ri + 1].base_pAddr;
-				}
-			}
-			if (aao_raw_cnt < 8 || (aao_raw_cnt % 1000) == 0)
-				pr_info("[ISP][DIAG AAORAW] m%d cnt=%d reg=0x%x hal=0x%x hal_next=0x%x diff=%d\n",
-					module, aao_raw_cnt, aao_reg, hal_pa,
-					hal_pa_next, (int)(aao_reg - hal_pa));
-			aao_raw_cnt++;
-		}
-#endif
 		wake_up_interruptible(
 			&IspInfo.WaitQHeadCam[ISP_GetWaitQCamIndex(module)]
 					     [ISP_WAITQ_HEAD_IRQ_AAO_DONE]);
