@@ -3,6 +3,7 @@
  * Copyright (c) 2016 Facebook
  */
 #include <linux/bpf.h>
+#include <linux/btf.h>
 #include <linux/jhash.h>
 #include <linux/filter.h>
 #include <linux/rculist_nulls.h>
