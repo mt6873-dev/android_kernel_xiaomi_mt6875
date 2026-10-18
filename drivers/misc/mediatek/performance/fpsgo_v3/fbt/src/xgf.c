@@ -1794,10 +1794,13 @@ static void xgf_enter_state_xchg(int enable)
 		goto out;
 	}
 
-	WARN_ON(!xgf_stat_xchg_fp);
+	if (unlikely(!xgf_stat_xchg_fp)) {
+		pr_warn_once("fpsgo: stat_xchg callback not registered, skip\n");
+		ret = -ENOENT;
+		goto out;
+	}
 
-	if (xgf_stat_xchg_fp)
-		ret = xgf_stat_xchg_fp(enable);
+	ret = xgf_stat_xchg_fp(enable);
 
 out:
 	xgf_trace("xgf k2ko xchg ret:%d enable:%d", ret, enable);
@@ -1987,12 +1990,21 @@ static int xgf_enter_est_runtime(int rpid, struct xgf_render *render,
 {
 	int ret;
 
-	WARN_ON(!xgf_est_runtime_fp);
-
-	if (xgf_est_runtime_fp)
-		ret = xgf_est_runtime_fp(rpid, render, runtime, ts);
-	else
+	/*
+	 * xgf_est_runtime_fp is registered by the vendor fpsgo.ko module.
+	 * Prebuilt vendor modules that keep their own copy of the xgf state
+	 * never register it on this in-kernel fpsgo_v3 copy, so the old
+	 * WARN_ON(!xgf_est_runtime_fp) dumped a stack trace on every dequeue
+	 * notify (up to ~120/s while the camera/UI was busy), trashing dmesg
+	 * and burning CPU.  The callback is optional: fall back to the
+	 * pre-A12 behavior (no runtime estimation) and warn only once.
+	 */
+	if (unlikely(!xgf_est_runtime_fp)) {
+		pr_warn_once("fpsgo: est_runtime callback not registered, runtime estimation disabled\n");
 		ret = -ENOENT;
+	} else {
+		ret = xgf_est_runtime_fp(rpid, render, runtime, ts);
+	}
 
 	return ret;
 }
