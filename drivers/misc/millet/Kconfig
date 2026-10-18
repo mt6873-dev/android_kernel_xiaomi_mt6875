@@ -1,0 +1,39 @@
+menuconfig MILLET
+	bool "Xiaomi Millet frozen-process notifications"
+	depends on CGROUP_FREEZER && NET && PROC_FS
+	help
+	  Xiaomi Millet 1.0 Netlink protocol, backported from dijun-v-oss.
+	  Reports events to the userspace freezer policy; does not freeze or
+	  thaw applications on its own. Supports the v1 and v2 freezers.
+
+if MILLET
+
+config MILLET_CORE
+	def_bool y
+
+config MILLET_HS
+	def_bool y
+
+config MILLET_SIG
+	bool "Signal notifications"
+	default y
+
+config MILLET_BINDER
+	bool "Binder notifications and UID busy-state queries"
+	depends on ANDROID_BINDER_IPC
+	default y
+
+config MILLET_PKG
+	bool "TCP receive notifications for monitored UIDs"
+	depends on NETFILTER && INET && IPV6
+	default y
+
+config MILLET_CGROUP
+	bool "Millet legacy freezer attachment policy"
+	default y
+	help
+	  Allow freezer task migration by system UID and CAP_SYS_ADMIN,
+	  and self-migration by the calling task. Keep the original freezer
+	  attach callback and the cgroup v2 permission checks intact.
+
+endif

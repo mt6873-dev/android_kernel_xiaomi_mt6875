@@ -72,6 +72,7 @@
 #include <linux/pid_namespace.h>
 #include <linux/security.h>
 #include <linux/spinlock.h>
+#include <linux/millet.h>
 
 #include <uapi/linux/android/binder.h>
 #include <uapi/linux/sched/types.h>
@@ -3808,6 +3809,10 @@ static void binder_transaction(struct binder_proc *proc,
 		e->to_thread = target_thread->pid;
 	e->to_proc = target_proc->pid;
 
+	millet_binder_notify(reply ? BINDER_REPLY : BINDER_TRANS,
+			target_proc->tsk, proc->tsk, thread->pid,
+			tr->flags & TF_ONE_WAY, tr->code);
+
 	/* TODO: reuse incoming transaction for reply */
 	t = kzalloc(sizeof(*t), GFP_KERNEL);
 	if (t == NULL) {
@@ -4864,6 +4869,123 @@ static int binder_put_node_cmd(struct binder_proc *proc,
 	return 0;
 }
 
+#ifdef CONFIG_MILLET_BINDER
+/* Called with the allocator mutex held, without changing allocation policy. */
+void millet_binder_alloc_low_space(struct binder_alloc *alloc, size_t size)
+{
+	struct binder_proc *proc = container_of(alloc, struct binder_proc, alloc);
+
+	if (!millet_monitor_ready(BINDER_TYPE))
+		return;
+	if (size > SIZE_MAX - sizeof(struct binder_buffer) ||
+	    alloc->free_async_space < READ_ONCE(binder_warn_ahead_space) ||
+	    alloc->free_async_space / 3 < size + sizeof(struct binder_buffer))
+		millet_binder_notify(BINDER_BUFF_WARN, proc->tsk, current,
+				task_pid_nr(current), false, 0);
+}
+
+static bool millet_binder_transaction_busy(struct binder_transaction *t,
+		struct binder_thread *thread, bool sync_only)
+{
+	bool busy;
+
+	spin_lock(&t->lock);
+	busy = t->to_thread == thread && (!sync_only || t->need_reply);
+	spin_unlock(&t->lock);
+	return busy;
+}
+
+static bool millet_binder_work_busy(struct list_head *list,
+		struct binder_thread *thread, bool sync_only)
+{
+	struct binder_work *work;
+	struct binder_transaction *t;
+
+	if (!sync_only)
+		return !list_empty(list);
+	list_for_each_entry(work, list, entry) {
+		if (work->type != BINDER_WORK_TRANSACTION)
+			continue;
+		t = container_of(work, struct binder_transaction, work);
+		if (millet_binder_transaction_busy(t, thread, true))
+			return true;
+	}
+	return false;
+}
+
+static bool millet_binder_proc_busy(struct binder_proc *proc)
+{
+	struct rb_node *node;
+	bool busy, sync_only = READ_ONCE(millet_binder_switch);
+
+	binder_inner_proc_lock(proc);
+	busy = millet_binder_work_busy(&proc->todo, NULL, sync_only);
+	for (node = rb_first(&proc->threads); !busy && node; node = rb_next(node)) {
+		struct binder_thread *thread;
+
+		thread = rb_entry(node, struct binder_thread, rb_node);
+		if (!thread->task)
+			continue;
+		busy = millet_binder_work_busy(&thread->todo, thread, sync_only);
+		if (!busy && thread->transaction_stack)
+			busy = millet_binder_transaction_busy(thread->transaction_stack,
+							      thread, sync_only);
+	}
+	binder_inner_proc_unlock(proc);
+	return busy;
+}
+
+void millet_binder_query_uid(int uid)
+{
+	struct binder_proc *proc;
+	bool busy = false;
+
+	mutex_lock(&binder_procs_lock);
+	hlist_for_each_entry(proc, &binder_procs, proc_node) {
+		if (proc->tsk && __kuid_val(task_uid(proc->tsk)) == uid &&
+		    millet_binder_proc_busy(proc)) {
+			busy = true;
+			break;
+		}
+	}
+	mutex_unlock(&binder_procs_lock);
+	millet_binder_query_stat(uid, busy ? BINDER_IN_BUSY : BINDER_IN_IDLE);
+}
+
+static void millet_binder_wait_notify(struct binder_thread *thread)
+{
+	struct binder_proc *proc = thread->proc;
+	struct binder_transaction *t;
+	struct task_struct *dst = NULL;
+	unsigned int flags = 0, code = 0;
+
+	if (!millet_monitor_ready(BINDER_TYPE))
+		return;
+
+	/* Snapshot all transaction fields under the native Binder locks. */
+	binder_inner_proc_lock(proc);
+	t = thread->transaction_stack;
+	if (t) {
+		spin_lock(&t->lock);
+		if (!thread->is_dead && t->to_proc && t->to_proc->tsk) {
+			dst = t->to_proc->tsk;
+			get_task_struct(dst);
+			flags = t->flags;
+			code = t->code;
+		}
+		spin_unlock(&t->lock);
+	}
+	binder_inner_proc_unlock(proc);
+	if (dst) {
+		millet_binder_notify(BINDER_THREAD_HAS_WORK, dst, proc->tsk,
+				thread->pid, flags & TF_ONE_WAY, code);
+		put_task_struct(dst);
+	}
+}
+#else
+static inline void millet_binder_wait_notify(struct binder_thread *thread) { }
+#endif
+
 static int binder_wait_for_work(struct binder_thread *thread,
 				bool do_proc_work)
 {
@@ -4881,6 +5003,7 @@ static int binder_wait_for_work(struct binder_thread *thread,
 			list_add(&thread->waiting_thread_node,
 				 &proc->waiting_threads);
 		binder_inner_proc_unlock(proc);
+		millet_binder_wait_notify(thread);
 		schedule();
 		binder_inner_proc_lock(proc);
 		list_del_init(&thread->waiting_thread_node);

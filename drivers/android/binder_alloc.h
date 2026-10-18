@@ -181,5 +181,12 @@ void binder_alloc_copy_from_buffer(struct binder_alloc *alloc,
 				   binder_size_t buffer_offset,
 				   size_t bytes);
 
+#ifdef CONFIG_MILLET_BINDER
+void millet_binder_alloc_low_space(struct binder_alloc *alloc, size_t size);
+#else
+static inline void millet_binder_alloc_low_space(struct binder_alloc *alloc,
+					       size_t size) { }
+#endif
+
 #endif /* _LINUX_BINDER_ALLOC_H */
 
