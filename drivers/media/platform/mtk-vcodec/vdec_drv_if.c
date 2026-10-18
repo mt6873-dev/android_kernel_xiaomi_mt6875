@@ -14,9 +14,6 @@
  */
 
 #include <linux/interrupt.h>
-
-/* TEMP DIAG for CORE stall; remove after collecting logs */
-#define VDEC_CORE_DIAG 1
 #include <linux/kernel.h>
 #include <linux/slab.h>
 
@@ -188,17 +185,6 @@ void vdec_decode_prepare(void *ctx_prepare,
 	if (ctx == NULL || hw_id >= MTK_VDEC_HW_NUM)
 		return;
 
-#ifdef VDEC_CORE_DIAG
-	{
-		static atomic_t diag_prep_cnt = ATOMIC_INIT(0);
-		int n = atomic_inc_return(&diag_prep_cnt);
-
-		if (n <= 8 || (n % 1000) == 0)
-			pr_info("[VDEC_DIAG] prepare#%d hw=%u sem=%d\n",
-				n, hw_id, ctx->dev->dec_sem[hw_id].count);
-	}
-#endif
-
 	mtk_vdec_pmqos_prelock(ctx, hw_id);
 	ret = mtk_vdec_lock(ctx, hw_id);
 
@@ -222,21 +208,8 @@ void vdec_decode_unprepare(void *ctx_unprepare,
 	if (ctx->dev->dec_sem[hw_id].count != 0) {
 		mtk_v4l2_err("HW not prepared, dec_sem[%d].count = %d",
 			hw_id, ctx->dev->dec_sem[hw_id].count);
-#ifdef VDEC_CORE_DIAG
-		pr_info("[VDEC_DIAG] unprepare REJECTED hw=%u sem=%d\n",
-			hw_id, ctx->dev->dec_sem[hw_id].count);
-#endif
 		return;
 	}
-#ifdef VDEC_CORE_DIAG
-	{
-		static atomic_t diag_unprep_cnt = ATOMIC_INIT(0);
-		int n = atomic_inc_return(&diag_unprep_cnt);
-
-		if (n <= 8 || (n % 1000) == 0)
-			pr_info("[VDEC_DIAG] unprepare#%d hw=%u\n", n, hw_id);
-	}
-#endif
 	mtk_vdec_pmqos_end_frame(ctx, hw_id);
 
 	disable_irq(ctx->dev->dec_irq[hw_id]);
