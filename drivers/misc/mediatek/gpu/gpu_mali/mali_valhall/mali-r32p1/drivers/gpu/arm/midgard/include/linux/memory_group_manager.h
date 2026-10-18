@@ -26,9 +26,11 @@
 #include <linux/of.h>
 #include <linux/version.h>
 
-#if (KERNEL_VERSION(4, 17, 0) > LINUX_VERSION_CODE)
-typedef int vm_fault_t;
-#endif
+/* vm_fault_t is already provided by include/linux/mm_types.h: the
+ * 4.19/5.10 backport series added the typedef even though
+ * LINUX_VERSION_CODE is still 4.14, so redefining it here would trip
+ * clang's -Wtypedef-redefinition (-Werror in this tree).
+ */
 
 #define MEMORY_GROUP_MANAGER_NR_GROUPS (16)
 
