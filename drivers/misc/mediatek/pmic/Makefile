@@ -34,7 +34,18 @@ endif
 
 ifeq ($(CONFIG_MTK_GAUGE_VERSION),30)
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/pmic/include
+# Must match the battery_* dir actually built by
+# drivers/power/supply/mediatek/Makefile: struct mtk_battery (gm) has a
+# single layout.  battery_bomb (CONFIG_MTK_CHARGER_BOMB=y) inserts
+# bh_data/show_ag/bat_health/prev_batt_fcc/prev_batt_remaining_capacity
+# (+240 bytes) before soc/ui_soc/hw_status, so code compiled against
+# battery/'s header reads the wrong offsets (e.g. read_hw_ocv() saw
+# hw_status.sw_ocv == 0 in mt6358_gauge.c even right after SET_SW_OCV).
+ifeq ($(CONFIG_MTK_CHARGER_BOMB),y)
+ccflags-y += -I$(srctree)/drivers/power/supply/mediatek/battery_bomb
+else
 ccflags-y += -I$(srctree)/drivers/power/supply/mediatek/battery
+endif
 ccflags-y += -I$(srctree)/drivers/power/supply/mediatek/misc
 obj-y += mtk_battery_adc_intf.o
 endif
