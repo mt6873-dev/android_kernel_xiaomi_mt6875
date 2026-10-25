@@ -17,7 +17,6 @@
 
 /* TEMP DIAG for vdec LAT ISR stall; remove after collecting logs */
 #define VDEC_LAT_DIAG 1
-#define VDEC_CORE_ISR_DIAG 1
 #include <linux/wait.h>
 
 #include "mtk_vcodec_intr.h"
@@ -85,16 +84,6 @@ irqreturn_t mtk_vcodec_dec_irq_handler(int irq, void *priv)
 	unsigned int dec_done_status = 0;
 	void __iomem *vdec_misc_addr = dev->dec_reg_base[VDEC_MISC] +
 		MTK_VDEC_IRQ_CFG_REG;
-#ifdef VDEC_CORE_ISR_DIAG
-	{
-		static atomic_t diag_core_isr = ATOMIC_INIT(0);
-		int n = atomic_inc_return(&diag_core_isr);
-
-		if (n <= 8 || (n % 1000) == 0)
-			pr_info("[VDEC_CORE_DIAG] CORE_ISR#%d irq=%d\n",
-				n, irq);
-	}
-#endif
 
 	ctx = mtk_vcodec_get_curr_ctx(dev, MTK_VDEC_CORE);
 	if (ctx == NULL)
@@ -110,13 +99,13 @@ irqreturn_t mtk_vcodec_dec_irq_handler(int irq, void *priv)
 
 	dec_done_status = readl(vdec_misc_addr);
 	ctx->irq_status = dec_done_status;
-#ifdef VDEC_CORE_ISR_DIAG
+#ifdef VDEC_LAT_DIAG
 	{
-		static atomic_t diag_core_st = ATOMIC_INIT(0);
-		int n = atomic_inc_return(&diag_core_st);
+		static atomic_t diag_lat_st = ATOMIC_INIT(0);
+		int n = atomic_inc_return(&diag_lat_st);
 
 		if (n <= 8 || (n % 1000) == 0)
-			pr_info("[VDEC_CORE_DIAG] cst#%d cg=0x%x hw_active=%d done=0x%x succ=%d\n",
+			pr_info("[VDEC_LAT_DIAG] st#%d cg=0x%x hw_active=%d done=0x%x succ=%d\n",
 				n, cg_status,
 				!!(cg_status & MTK_VDEC_HW_ACTIVE),
 				dec_done_status,
@@ -179,20 +168,6 @@ irqreturn_t mtk_vcodec_lat_dec_irq_handler(int irq, void *priv)
 
 	dec_done_status = readl(vdec_misc_addr);
 	ctx->irq_status = dec_done_status;
-#ifdef VDEC_LAT_DIAG
-	{
-		static atomic_t diag_lat_st2 = ATOMIC_INIT(0);
-		int n = atomic_inc_return(&diag_lat_st2);
-
-		if (n <= 8 || (n % 1000) == 0)
-			pr_info("[VDEC_LAT_DIAG] st#%d cg=0x%x hw_active=%d done=0x%x succ=%d\n",
-				n, cg_status,
-				!!(cg_status & MTK_VDEC_HW_ACTIVE),
-				dec_done_status,
-				!!(dec_done_status &
-				   MTK_VDEC_IRQ_STATUS_DEC_SUCCESS));
-	}
-#endif
 	if ((dec_done_status & MTK_VDEC_IRQ_STATUS_DEC_SUCCESS) !=
 		MTK_VDEC_IRQ_STATUS_DEC_SUCCESS)
 		return IRQ_HANDLED;
