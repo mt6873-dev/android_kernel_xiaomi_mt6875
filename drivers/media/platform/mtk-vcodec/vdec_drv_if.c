@@ -185,6 +185,7 @@ void vdec_decode_prepare(void *ctx_prepare,
 	if (ctx == NULL || hw_id >= MTK_VDEC_HW_NUM)
 		return;
 
+	mutex_lock(&ctx->hw_status);
 	mtk_vdec_pmqos_prelock(ctx, hw_id);
 	ret = mtk_vdec_lock(ctx, hw_id);
 
@@ -194,6 +195,7 @@ void vdec_decode_prepare(void *ctx_prepare,
 		enable_irq(ctx->dev->dec_irq[hw_id]);
 
 	mtk_vdec_pmqos_begin_frame(ctx, hw_id);
+	mutex_unlock(&ctx->hw_status);
 }
 EXPORT_SYMBOL_GPL(vdec_decode_prepare);
 
@@ -210,6 +212,7 @@ void vdec_decode_unprepare(void *ctx_unprepare,
 			hw_id, ctx->dev->dec_sem[hw_id].count);
 		return;
 	}
+	mutex_lock(&ctx->hw_status);
 	mtk_vdec_pmqos_end_frame(ctx, hw_id);
 
 	disable_irq(ctx->dev->dec_irq[hw_id]);
@@ -217,6 +220,7 @@ void vdec_decode_unprepare(void *ctx_unprepare,
 	mtk_vcodec_set_curr_ctx(ctx->dev, NULL, hw_id);
 
 	mtk_vdec_unlock(ctx, hw_id);
+	mutex_unlock(&ctx->hw_status);
 }
 EXPORT_SYMBOL_GPL(vdec_decode_unprepare);
 
