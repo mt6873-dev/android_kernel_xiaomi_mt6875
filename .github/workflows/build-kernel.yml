@@ -103,6 +103,32 @@ jobs:
         #    but policy/feature.c references it unconditionally -> guard the entry
         perl -0pi -e 's/^(\s*)\[KSU_FEATURE_SELINUX_HIDE\] = "selinux_hide",$/#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)\n${1}[KSU_FEATURE_SELINUX_HIDE] = "selinux_hide",\n#endif/m' $KSU/policy/feature.c
         awk '/^#if LINUX_VERSION_CODE >= KERNEL_VERSION\(5, 10, 0\)$/ {getline; if ($0 ~ /KSU_FEATURE_SELINUX_HIDE/) ok=1} END{exit !ok}' $KSU/policy/feature.c
+        # 5) linux/static_call.h is 5.10+ and unused by KernelSU -> drop the include
+        sed -i '\|#include <linux/static_call.h>|d' $KSU/kernel_includes.h
+        ! grep -qF 'linux/static_call.h' $KSU/kernel_includes.h
+        # 6) extension/cpu_spoof.c needs 5.10+ vDSO/clocksource APIs (vdso/datapage.h,
+        #    vdso_data[].clock_mode, VDSO_CLOCKMODE_ARCHTIMER) absent on 4.14 -> stub it
+        cat > $KSU/extension/cpu_spoof.c <<'KSUEOF'
+        /* 4.14 compat stub: cpu spoof needs 5.10+ vDSO/clocksource APIs. */
+        #include <linux/errno.h>
+        #include "cpu_spoof.h"
+        int ksu_extension_cpu_spoof_io(u32 id, void __user *raw)
+        {
+            return -EOPNOTSUPP;
+        }
+        KSUEOF
+        grep -qF 'return -EOPNOTSUPP;' $KSU/extension/cpu_spoof.c
+        # 7) access_ok() is 3-arg (VERIFY_READ first) on 4.14 vs 2-arg on 5.0+;
+        #    kpm.c forgot KernelSU's own ksu_access_ok() compat macro -> use it
+        sed -i 's/\([^_a-zA-Z0-9]\)access_ok(/\1ksu_access_ok(/g' $KSU/extension/kpm/kpm.c
+        test "$(grep -c 'ksu_access_ok(' $KSU/extension/kpm/kpm.c)" -ge 10
+        ! grep -q '[^_]access_ok(' $KSU/extension/kpm/kpm.c
+        # 8) ksu_main.c includes the KPM implementation files unconditionally, but they
+        #    need 5.x+ (task_struct pids[], C99 for-decls); glue already returns
+        #    -EOPNOTSUPP without CONFIG_KPM -> gate the impls on CONFIG_KPM
+        sed -i 's|^#include "extension/kpm/kpm.c"|#ifdef CONFIG_KPM\n#include "extension/kpm/kpm.c"|' $KSU/ksu_main.c
+        sed -i 's|^#include "extension/kpm/super_access.c"|#include "extension/kpm/super_access.c"\n#endif|' $KSU/ksu_main.c
+        awk '/^#ifdef CONFIG_KPM$/ {getline; if ($0 ~ /extension\/kpm\/kpm.c/) ok=1} END{exit !ok}' $KSU/ksu_main.c
         echo "KernelSU 4.14 compat patch applied"
 
     - name: Build kernel
