@@ -1529,6 +1529,19 @@ void fg_custom_init_from_dts(struct platform_device *dev)
 		fg_custom_parse_table(np, node_name,
 			fg_table_cust_data.fg_profile[i].fg_profile, column);
 	}
+
+	/* stock fg_custom_init_from_dts tail (vmlinux_official.elf
+	 * 0xffffff8008f94c08..0xffffff8008f94cac): replicate each table's
+	 * pseudo100 into r_pseudo100.pseudo[0..MAX_CHARGE_RDC-1].
+	 * daemon fg_construct_battery_profile reads lowPs100/highPs100 from
+	 * r_pseudo100.pseudo[0] (not from .pseudo100); without this copy they
+	 * stay 0 -> batterypseudo100 0 -> C_Remain_Pseudo negative ->
+	 * fg_bat_int2 ht_gap falls back to quse/1000 (43) and ui_soc inflates.
+	 */
+	for (i = 0; i < MAX_TABLE; i++)
+		for (j = 0; j < MAX_CHARGE_RDC; j++)
+			fg_table_cust_data.fg_profile[i].r_pseudo100.pseudo[j] =
+				fg_table_cust_data.fg_profile[i].pseudo100;
 }
 
 #endif	/* end of CONFIG_OF */
