@@ -137,12 +137,6 @@ irqreturn_t mtk_vcodec_lat_dec_irq_handler(int irq, void *priv)
 {
 #ifndef FPGA_INTERRUPT_API_DISABLE
 	struct mtk_vcodec_dev *dev = priv;
-	struct mtk_vcodec_ctx *ctx;
-	u32 cg_status = 0;
-	unsigned int dec_done_status = 0;
-	void __iomem *vdec_misc_addr = dev->dec_reg_base[VDEC_LAT_MISC] +
-		MTK_VDEC_IRQ_CFG_REG;
-
 #ifdef VDEC_LAT_DIAG
 	{
 		static atomic_t diag_lat_isr = ATOMIC_INIT(0);
@@ -153,6 +147,11 @@ irqreturn_t mtk_vcodec_lat_dec_irq_handler(int irq, void *priv)
 				n, irq);
 	}
 #endif
+	struct mtk_vcodec_ctx *ctx;
+	u32 cg_status = 0;
+	unsigned int dec_done_status = 0;
+	void __iomem *vdec_misc_addr = dev->dec_reg_base[VDEC_LAT_MISC] +
+		MTK_VDEC_IRQ_CFG_REG;
 
 	ctx = mtk_vcodec_get_curr_ctx(dev, MTK_VDEC_LAT);
 	if (ctx == NULL)
