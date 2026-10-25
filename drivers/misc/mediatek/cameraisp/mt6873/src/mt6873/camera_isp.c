@@ -37,6 +37,15 @@
 #include <linux/sched.h>
 #include <linux/sched/clock.h>
 #include <linux/slab.h>
+
+/* TEMP DIAG round 3 (revert after logs): AAO per-frame address/state dump.
+ * Dump analysis shows 50% of frames have the first 24 blocks (18432B) of
+ * the AAO buffer sparse while the rest is fine (dual-buffer parity), so
+ * dump the runtime AAO_BASE_ADDR / AAO_FH_BASE_ADDR / AAO_ERR_STAT on
+ * every AAO_DONE to see whether the programmed addresses alternate.
+ * Grep for [ISP][DIAG AAO3].
+ */
+#define ISP_TEMP_DIAG_AAO_RAW3 1
 #include <linux/spinlock.h>
 #include <linux/types.h>
 #include <linux/uaccess.h>
@@ -11706,6 +11715,19 @@ LB_CAM_SOF_IGNORE:
 					     [ISP_WAITQ_HEAD_IRQ_HW_P1_DONE]);
 	}
 	if (DmaStatus & AAO_DONE_ST) {
+#ifdef ISP_TEMP_DIAG_AAO_RAW3
+		{
+			static int aao3_cnt;
+			unsigned int aao3_reg = ISP_RD32(CAM_REG_AAO_BASE_ADDR(module));
+			unsigned int aao3_fh = ISP_RD32(CAM_REG_AAO_FH_BASE_ADDR(module));
+			unsigned int aao3_err = ISP_RD32(CAM_REG_AAO_ERR_STAT(module));
+
+			if (aao3_cnt < 8 || (aao3_cnt % 200) == 0)
+				pr_info("[ISP][DIAG AAO3] cnt=%d reg=0x%x fh=0x%x err=0x%x\n",
+					aao3_cnt, aao3_reg, aao3_fh, aao3_err);
+			aao3_cnt++;
+		}
+#endif
 		wake_up_interruptible(
 			&IspInfo.WaitQHeadCam[ISP_GetWaitQCamIndex(module)]
 					     [ISP_WAITQ_HEAD_IRQ_AAO_DONE]);
