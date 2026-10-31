@@ -2610,6 +2610,10 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct inet_connection_sock *icsk = inet_csk(sk);
+	/* Upstream 4.14.346 dropped this as unused (its TCP_FASTOPEN takes a
+	 * bool and uses the global sysctl_tcp_fastopen).  This tree carries the
+	 * per-netns fastopen backport, so net is still required here.
+	 */
 	struct net *net = sock_net(sk);
 	int val;
 	int err = 0;
