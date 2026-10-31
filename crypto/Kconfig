@@ -1674,6 +1674,13 @@ config CRYPTO_LZ4HC
 	help
 	  This is the LZ4 high compression mode algorithm.
 
+config CRYPTO_ZSTDN
+	tristate "Oplus Zstd 1.4.10 compression algorithm"
+	select CRYPTO_ALGAPI
+	select CRYPTO_ACOMP2
+	help
+	  Register the independent zstdn_o compression algorithm at level 1.
+
 config CRYPTO_ZSTD
 	tristate "Zstd compression algorithm"
 	select CRYPTO_ALGAPI

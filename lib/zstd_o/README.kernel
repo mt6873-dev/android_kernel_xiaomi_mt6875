@@ -1,0 +1,25 @@
+Oplus Zstd crypto backend
+========================
+
+Imported from the user-supplied zstd_o.zip on 2026-10-31. The bundled
+Zstandard library identifies itself as 1.4.10. The crypto backend registers
+zstdn_o at compression level 1, alongside the existing zstd algorithm.
+
+Integration changes:
+- Build through CONFIG_CRYPTO_ZSTDN and list zstdn_o in zram's algorithms.
+- Include linux/types.h explicitly for the 4.14 size_t definition.
+- Force-include namespace.h so the library's global symbols do not collide
+  with the existing Zstd, entropy coding, and xxhash implementations.
+- Report successful registration only if both crypto registrations succeed.
+
+namespace.h lists all global definitions in crypto_zstdn_o.o, as reported by
+nm -g --defined-only. Regenerate and inspect that list whenever updating the
+bundled sources. Do not prefix external kernel references.
+
+The userspace zram setup chooses the compression algorithm before setting
+disksize. Enabling this backend does not change zram's default compressor.
+
+Do not treat zstdn_o as interchangeable with the legacy zstd backend. Device
+testing found cross-decoding failures in both directions (7 of 18 input
+cases each). Keep the distinct algorithm name and reset/reinitialize zram
+before selecting it; never relabel existing compressed data.

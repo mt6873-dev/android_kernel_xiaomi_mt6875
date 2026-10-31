@@ -291,20 +291,25 @@ static ssize_t idle_store(struct device *dev,
 {
 	struct zram *zram = dev_to_zram(dev);
 	unsigned long nr_pages = zram->disksize >> PAGE_SHIFT;
+	bool mark_all = sysfs_streq(buf, "all");
 	int index;
-	char mode_buf[8];
-	ssize_t sz;
 
-	sz = strscpy(mode_buf, buf, sizeof(mode_buf));
-	if (sz <= 0)
+#ifdef CONFIG_ZRAM_TRACK_ENTRY_ACTIME
+	ktime_t cutoff_time = 0;
+	u64 age_sec;
+
+	if (!mark_all) {
+		if (kstrtoull(buf, 0, &age_sec))
+			return -EINVAL;
+		if (age_sec > S64_MAX / NSEC_PER_SEC)
+			return -ERANGE;
+		cutoff_time = ktime_sub(ktime_get_boottime(),
+				ns_to_ktime(age_sec * NSEC_PER_SEC));
+	}
+#else
+	if (!mark_all)
 		return -EINVAL;
-
-	/* ignore trailing new line */
-	if (mode_buf[sz - 1] == '\n')
-		mode_buf[sz - 1] = 0x00;
-
-	if (strcmp(mode_buf, "all"))
-		return -EINVAL;
+#endif
 
 	down_read(&zram->init_lock);
 	if (!init_done(zram)) {
@@ -319,8 +324,18 @@ static ssize_t idle_store(struct device *dev,
 		 */
 		zram_slot_lock(zram, index);
 		if (zram_allocated(zram, index) &&
-				!zram_test_flag(zram, index, ZRAM_UNDER_WB))
-			zram_set_flag(zram, index, ZRAM_IDLE);
+		    !zram_test_flag(zram, index, ZRAM_WB) &&
+		    !zram_test_flag(zram, index, ZRAM_SAME) &&
+		    !zram_test_flag(zram, index, ZRAM_UNDER_WB)) {
+#ifdef CONFIG_ZRAM_TRACK_ENTRY_ACTIME
+			if (!mark_all &&
+			    !ktime_after(cutoff_time,
+					zram->table[index].ac_time))
+				zram_clear_flag(zram, index, ZRAM_IDLE);
+			else
+#endif
+				zram_set_flag(zram, index, ZRAM_IDLE);
+		}
 		zram_slot_unlock(zram, index);
 	}
 
@@ -866,7 +881,9 @@ static void zram_debugfs_destroy(void)
 static void zram_accessed(struct zram *zram, u32 index)
 {
 	zram_clear_flag(zram, index, ZRAM_IDLE);
+#ifdef CONFIG_ZRAM_TRACK_ENTRY_ACTIME
 	zram->table[index].ac_time = ktime_get_boottime();
+#endif
 }
 
 static ssize_t read_block_state(struct file *file, char __user *buf,
@@ -952,6 +969,9 @@ static void zram_debugfs_destroy(void) {};
 static void zram_accessed(struct zram *zram, u32 index)
 {
 	zram_clear_flag(zram, index, ZRAM_IDLE);
+#ifdef CONFIG_ZRAM_TRACK_ENTRY_ACTIME
+	zram->table[index].ac_time = ktime_get_boottime();
+#endif
 };
 static void zram_debugfs_register(struct zram *zram) {};
 static void zram_debugfs_unregister(struct zram *zram) {};
@@ -1176,7 +1196,7 @@ static void zram_free_page(struct zram *zram, size_t index)
 {
 	unsigned long handle;
 
-#ifdef CONFIG_ZRAM_MEMORY_TRACKING
+#ifdef CONFIG_ZRAM_TRACK_ENTRY_ACTIME
 	zram->table[index].ac_time = 0;
 #endif
 	if (zram_test_flag(zram, index, ZRAM_IDLE))

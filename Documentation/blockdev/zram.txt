@@ -263,14 +263,16 @@ If admin want to use incompressible page writeback, they could do via
 
 	"echo huge > /sys/block/zramX/write"
 
-To use idle page writeback, first, user need to declare zram pages
-as idle.
+To use idle page writeback, first, user needs to declare zram pages
+as idle. Writing ``all`` marks every eligible page. If
+CONFIG_ZRAM_TRACK_ENTRY_ACTIME is enabled, writing a number instead marks
+only pages that have not been accessed for at least that many seconds.
 
 	"echo all > /sys/block/zramX/idle"
+	"echo 300 > /sys/block/zramX/idle"
 
-From now on, any pages on zram are idle pages. The idle mark
-will be removed until someone request access of the block.
-IOW, unless there is access request, those pages are still idle pages.
+The marked pages remain idle until a request accesses them. zram clears
+the idle mark when a page is accessed again.
 
 Admin can request writeback of those idle pages at right timing via
 
@@ -328,11 +330,15 @@ know it via /sys/block/zram0/bd_stat's 3rd column.
 
 = memory tracking
 
-With CONFIG_ZRAM_MEMORY_TRACKING, user can know information of the
-zram block. It could be useful to catch cold or incompressible
-pages of the process with*pagemap.
-If you enable the feature, you could see block state via
-/sys/kernel/debug/zram/zram0/block_state". The output is as follows,
+With CONFIG_ZRAM_TRACK_ENTRY_ACTIME, zram records the last access time for
+each entry. This enables age-based selection through the ``idle`` interface
+and adds one ktime_t field to each zram table entry.
+
+CONFIG_ZRAM_MEMORY_TRACKING additionally exposes the access time and state
+of each block through debugfs. It could be useful to identify cold or
+incompressible pages of a process with pagemap. If enabled, block state is
+available via
+/sys/kernel/debug/zram/zram0/block_state. The output is as follows,
 
 	  300    75.033841 .wh.
 	  301    63.806904 s...

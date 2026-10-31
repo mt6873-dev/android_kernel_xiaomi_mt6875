@@ -469,6 +469,7 @@ CONFIG_MI_MEMORY_SYSFS=y
 # ExtM also drives zram writeback ("zram userate is low, no need to flush").
 # The code is already in this tree, the official kernel just had it enabled.
 CONFIG_ZRAM_WRITEBACK=y
+CONFIG_CRYPTO_ZSTDN=y
 CONFIG_PSTORE=y
 CONFIG_PSTORE_CONSOLE=y
 CONFIG_PSTORE_PMSG=y
