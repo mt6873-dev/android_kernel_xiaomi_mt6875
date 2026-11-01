@@ -469,7 +469,6 @@ CONFIG_MI_MEMORY_SYSFS=y
 # ExtM also drives zram writeback ("zram userate is low, no need to flush").
 # The code is already in this tree, the official kernel just had it enabled.
 CONFIG_ZRAM_WRITEBACK=y
-CONFIG_CRYPTO_ZSTDN=y
 CONFIG_PSTORE=y
 CONFIG_PSTORE_CONSOLE=y
 CONFIG_PSTORE_PMSG=y
@@ -637,3 +636,6 @@ CONFIG_MILLET_SIG=y
 CONFIG_MILLET_BINDER=y
 CONFIG_MILLET_PKG=y
 CONFIG_MILLET_CGROUP=y
+
+# Oplus Zstd backend for zram (cherry-pick 59843b052dd2, lib/zstd_o)
+CONFIG_CRYPTO_ZSTDN=y
