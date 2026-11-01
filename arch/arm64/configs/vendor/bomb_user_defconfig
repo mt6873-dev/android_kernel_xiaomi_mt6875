@@ -639,3 +639,9 @@ CONFIG_MILLET_CGROUP=y
 
 # Oplus Zstd backend for zram (cherry-pick 59843b052dd2, lib/zstd_o)
 CONFIG_CRYPTO_ZSTDN=y
+
+# From limitbeer0 commit d04cfc3b3b0f (android: backport cgroup v2 and Binder
+# freezer support): A17 cgroup v2 freezer/PIDs controller requirements.
+CONFIG_CGROUPS=y
+CONFIG_CGROUP_FREEZER=y
+CONFIG_CGROUP_PIDS=y
