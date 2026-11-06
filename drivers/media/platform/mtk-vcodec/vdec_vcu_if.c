@@ -28,6 +28,9 @@
 #include "vdec_drv_if.h"
 #include "smi_public.h"
 
+/* TEMP DIAG for CORE stall; remove after collecting logs */
+#define VDEC_CORE_DIAG 1
+
 static void handle_init_ack_msg(struct vdec_vcu_ipi_init_ack *msg)
 {
 	struct vdec_vcu_inst *vcu = (struct vdec_vcu_inst *)
@@ -236,11 +239,24 @@ int vcu_dec_ipi_handler(void *data, unsigned int len, void *priv)
 	vsi = (struct vdec_vsi *)vcu->vsi;
 	mtk_vcodec_debug(vcu, "+ id=%X status = %d\n",
 		msg->msg_id, msg->status);
+#ifdef VDEC_CORE_DIAG
+	{
+		static atomic_t diag_msg_cnt = ATOMIC_INIT(0);
+		int n = atomic_inc_return(&diag_msg_cnt);
+
+		if (n <= 8 || (n % 1000) == 0)
+			pr_info("[VDEC_DIAG] msg#%d id=0x%X status=%d\n",
+				n, msg->msg_id, msg->status);
+	}
+#endif
 
 	if (vcu->abort)
 		return -EINVAL;
 
 	if (msg->msg_id == VCU_IPIMSG_DEC_WAITISR) {
+#ifdef VDEC_CORE_DIAG
+		pr_info("[VDEC_DIAG] WAITISR status(core)=%d\n", msg->status);
+#endif
 		/* wait decoder done interrupt */
 		do_gettimeofday(&t_s);
 		ret = mtk_vcodec_wait_for_done_ctx(vcu->ctx,
@@ -281,10 +297,16 @@ int vcu_dec_ipi_handler(void *data, unsigned int len, void *priv)
 			break;
 		case VCU_IPIMSG_DEC_LOCK_CORE:
 			vdec_decode_prepare(vcu->ctx, MTK_VDEC_CORE);
+#ifdef VDEC_CORE_DIAG
+			pr_info("[VDEC_DIAG] LOCK_CORE -> prepare(CORE) done\n");
+#endif
 			ret = 1;
 			break;
 		case VCU_IPIMSG_DEC_UNLOCK_CORE:
 			vdec_decode_unprepare(vcu->ctx, MTK_VDEC_CORE);
+#ifdef VDEC_CORE_DIAG
+			pr_info("[VDEC_DIAG] UNLOCK_CORE -> unprepare(CORE) done\n");
+#endif
 			ret = 1;
 			break;
 		case VCU_IPIMSG_DEC_GET_FRAME_BUFFER:
