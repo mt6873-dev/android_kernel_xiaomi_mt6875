@@ -11718,13 +11718,17 @@ LB_CAM_SOF_IGNORE:
 #ifdef ISP_TEMP_DIAG_AAO_RAW3
 		{
 			static int aao3_cnt;
-			unsigned int aao3_reg = ISP_RD32(CAM_REG_AAO_BASE_ADDR(module));
-			unsigned int aao3_fh = ISP_RD32(CAM_REG_AAO_FH_BASE_ADDR(module));
-			unsigned int aao3_err = ISP_RD32(CAM_REG_AAO_ERR_STAT(module));
+			unsigned int aao3_reg =
+				ISP_RD32(CAM_REG_AAO_BASE_ADDR(reg_module));
+			unsigned int aao3_fh =
+				ISP_RD32(CAM_REG_AAO_FH_BASE_ADDR(reg_module));
+			unsigned int aao3_err =
+				ISP_RD32(CAM_REG_AAO_ERR_STAT(reg_module));
 
-			if (aao3_cnt < 8 || (aao3_cnt % 200) == 0)
-				pr_info("[ISP][DIAG AAO3] cnt=%d reg=0x%x fh=0x%x err=0x%x\n",
-					aao3_cnt, aao3_reg, aao3_fh, aao3_err);
+			if (aao3_cnt < 16 || (aao3_cnt % 200) == 0)
+				pr_info("[ISP][DIAG AAO3] cnt=%d mdl=%u rmdl=%u reg=0x%x fh=0x%x err=0x%x\n",
+					aao3_cnt, module, reg_module,
+					aao3_reg, aao3_fh, aao3_err);
 			aao3_cnt++;
 		}
 #endif
