@@ -645,3 +645,32 @@ CONFIG_CRYPTO_ZSTDN=y
 CONFIG_CGROUPS=y
 CONFIG_CGROUP_FREEZER=y
 CONFIG_CGROUP_PIDS=y
+
+# Droidspaces integration (non-GKI path, Documentation/zh-CN/Kernel-Configuration.md)
+# https://github.com/ravindu644/Droidspaces-OSS
+# Requires kernel-patches/non-GKI/02 (cgroup file prefix handling) applied too.
+# IPC mechanisms
+CONFIG_SYSVIPC=y
+CONFIG_POSIX_MQUEUE=y
+# Core namespace support (IPC_NS depends on SYSVIPC)
+CONFIG_IPC_NS=y
+# Control groups support
+CONFIG_CGROUP_DEVICE=y
+CONFIG_CGROUP_NET_PRIO=y
+# Device filesystem support
+CONFIG_DEVTMPFS=y
+# Enable xattr, posix acl support on tmpfs (NixOS support)
+CONFIG_TMPFS_POSIX_ACL=y
+CONFIG_TMPFS_XATTR=y
+# Network isolation (NAT/none modes)
+CONFIG_BRIDGE_NETFILTER=y
+CONFIG_NF_TABLES=y
+CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y
+# IPv6 in NAT mode (NAT66)
+CONFIG_IP6_NF_NAT=y
+CONFIG_NF_NAT_IPV6=y
+CONFIG_IP6_NF_TARGET_MASQUERADE=y
+# Macvlan mode (--net=macvlan)
+CONFIG_MACVLAN=y
+# Fix for docker unsafe procfs error
+CONFIG_USER_NS=y
