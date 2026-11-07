@@ -420,20 +420,6 @@ void ccu_ion_free_import_handle(struct ion_handle *handle)
 	ion_free(_ccu_ion_client, handle);
 }
 
-/* Build the CCU IOVA mapping for an imported handle. The official
- * import path only holds the handle; the mapping used to be created
- * elsewhere and its absence let CCU write-fault on L13_CAM_CCUO
- * (AE output stayed zero -> AE judged extreme dark -> over-exposed).
- */
-int ccu_ion_map_handle(struct ion_handle *handle)
-{
-	unsigned int mva = 0;
-
-	if (!handle || !_ccu_ion_client)
-		return -1;
-	return _ccu_ion_get_mva(_ccu_ion_client, handle, &mva, false);
-}
-
 struct ion_handle *ccu_ion_import_handle(int fd)
 {
 	struct ion_handle *handle = NULL;
