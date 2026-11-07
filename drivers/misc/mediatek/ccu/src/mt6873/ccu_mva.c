@@ -281,9 +281,8 @@ static int _ccu_ion_get_mva(struct ion_client *client,
 	}
 	*mva = mm_data.get_phys_param.phy_addr;
 
-	LOG_INF_MUST("[CCU][DIAG ALLOC] get_mva cached=%d hnd=0x%p mva=0x%08x ion_iova=0x%08x\n",
-		cached, handle, (unsigned int)*mva,
-		mm_data.get_phys_param.phy_addr);
+	LOG_DBG_MUST("alloc mmu addr hnd=0x%p,mva=0x%08x\n",
+		handle, (unsigned int)*mva);
 
 	mm_data.mm_cmd = ION_MM_SET_DEBUG_INFO;
 	mm_data.buf_debug_info_param.kernel_handle = handle;
@@ -347,8 +346,9 @@ int ccu_allocate_mem(struct CcuMemHandle *memHandle, int size, bool cached)
 	int ret = 0;
 	uint32_t idx = cached ? 1 : 0;
 
-	LOG_INF_MUST("[CCU][DIAG ALLOC] allocate_mem size=%d cached=%d\n",
-		size, cached);
+	LOG_DBG_MUST("_ccuAllocMem+\n");
+	LOG_DBG_MUST("size(%d) cached(%d) memHandle->ionHandleKd(%p)\n",
+		size, cached, memHandle->ionHandleKd);
 
 	if (_ccu_ion_client == NULL) {
 		LOG_ERR("%s: _ccu_ion_client is null!\n", __func__);
@@ -359,8 +359,6 @@ int ccu_allocate_mem(struct CcuMemHandle *memHandle, int size, bool cached)
 		ION_HEAP_MULTIMEDIA_MASK, 0, (size_t)size, cached,
 		memHandle->meminfo.ion_log);
 	if (!memHandle->ionHandleKd) {
-		LOG_INF_MUST("[CCU][DIAG ALLOC] ion_alloc FAIL size=%d cached=%d\n",
-			size, cached);
 		LOG_ERR("fail to get ion buffer handle (size=0x%lx)\n", size);
 		return -1;
 	}
@@ -380,8 +378,6 @@ int ccu_allocate_mem(struct CcuMemHandle *memHandle, int size, bool cached)
 
 	ret = _ccu_ion_get_mva(_ccu_ion_client, memHandle->ionHandleKd,
 		&memHandle->meminfo.mva, cached);
-	LOG_INF_MUST("[CCU][DIAG ALLOC] get_mva ret=%d mva=0x%08x cached=%d\n",
-		ret, memHandle->meminfo.mva, cached);
 	if (ret) {
 		LOG_ERR("ccu ion_get_mva failed\n");
 		return -1;
