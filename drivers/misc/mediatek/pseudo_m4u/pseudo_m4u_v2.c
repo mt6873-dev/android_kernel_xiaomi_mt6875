@@ -2669,6 +2669,50 @@ int m4u_mva_unmap_kernel(unsigned long mva,
 }
 EXPORT_SYMBOL(m4u_mva_unmap_kernel);
 
+/* TEMP DIAG (camera AAO/CQ buffer misalignment hunt): translate an
+ * IOVA registered through pseudo_m4u (ION mappings) to its physical
+ * address by walking the client mvaList. Process context only: takes
+ * client->dataMutex. Revert together with the camera_isp TEMP DIAG.
+ */
+unsigned long pseudo_m4u_iova_to_pa(unsigned long iova)
+{
+	struct m4u_client_t *client = ion_m4u_client;
+	struct m4u_buf_info_t *p;
+	struct scatterlist *sg;
+	unsigned long pa = 0;
+	unsigned int off;
+	int i;
+
+	if (!client)
+		return 0;
+
+	mutex_lock(&client->dataMutex);
+	list_for_each_entry(p, &client->mvaList, link) {
+		if (iova < (unsigned long)p->mva ||
+		    iova >= (unsigned long)p->mva + p->size)
+			continue;
+		off = (unsigned int)(iova - p->mva);
+		if (!p->sg_table)
+			break;
+		for_each_sg(p->sg_table->sgl, sg, p->sg_table->nents, i) {
+			unsigned int len = sg_dma_len(sg);
+
+			if (len == 0)
+				len = sg->length;
+			if (off < len) {
+				pa = sg_phys(sg) + off;
+				break;
+			}
+			off -= len;
+		}
+		break;
+	}
+	mutex_unlock(&client->dataMutex);
+
+	return pa;
+}
+EXPORT_SYMBOL(pseudo_m4u_iova_to_pa);
+
 #ifdef PSEUDO_M4U_TEE_SERVICE_ENABLE
 static DEFINE_MUTEX(gM4u_sec_init);
 bool m4u_tee_en;

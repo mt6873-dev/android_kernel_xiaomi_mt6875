@@ -46,6 +46,7 @@
  * Grep for [ISP][DIAG AAO3].
  */
 #define ISP_TEMP_DIAG_AAO_RAW3 1
+extern unsigned long pseudo_m4u_iova_to_pa(unsigned long iova);
 #include <linux/spinlock.h>
 #include <linux/types.h>
 #include <linux/uaccess.h>
@@ -11785,6 +11786,76 @@ LB_CAM_SOF_IGNORE:
 	}
 	if (DmaStatus & AAO_DONE_ST) {
 #ifdef ISP_TEMP_DIAG_AAO_RAW3
+static unsigned int aao3s_reg, aao3s_fh, aao3s_cnt;
+static unsigned int aao3s_cq[25];
+
+static void aao3_diag_work_fn(struct work_struct *work)
+{
+	unsigned long pa, va;
+	unsigned int *p;
+	int t, k;
+
+	if (aao3s_cnt >= 8)
+		return;
+
+	for (t = 0; t < 2; t++) {
+		unsigned int iova = t ? aao3s_fh : aao3s_reg;
+
+		pa = pseudo_m4u_iova_to_pa(iova);
+		if (!pa) {
+			pr_info("[ISP][DIAG AAO3T] FAIL cnt=%d src=%d iova=0x%x\n",
+				aao3s_cnt, t, iova);
+			continue;
+		}
+		va = (unsigned long)__va(pa & ~0xfffUL);
+		__inval_dcache_area((void *)va, 0x1000);
+		p = (unsigned int *)(va + (pa & 0xfffU));
+		for (k = 0; k < 8; k++)
+			pr_info("[ISP][DIAG AAO3T] cnt=%d src=%d iova=0x%x pa=0x%lx dw%d=%08x\n",
+				aao3s_cnt, t, iova, pa, k, p[k]);
+	}
+
+	for (t = 0; t < 25; t++) {
+		unsigned int iova = aao3s_cq[t];
+
+		if (!iova)
+			continue;
+		pa = pseudo_m4u_iova_to_pa(iova);
+		if (!pa) {
+			if (aao3s_cnt < 4)
+				pr_info("[ISP][DIAG CQTBL3] FAIL cnt=%d thr=%d iova=0x%x\n",
+					aao3s_cnt, t, iova);
+			continue;
+		}
+		if (aao3s_cnt >= 4)
+			continue;
+		va = (unsigned long)__va(pa & ~0xfffUL);
+		__inval_dcache_area((void *)va, 0x1000);
+		p = (unsigned int *)(va + (pa & 0xfffU));
+		pr_info("[ISP][DIAG CQTBL3] cnt=%d thr=%d iova=0x%x pa=0x%lx\n",
+			aao3s_cnt, t, iova, pa);
+		for (k = 0; k + 1 < 64; k += 2) {
+			unsigned int hi = p[k + 1];
+			unsigned int lo = p[k];
+			unsigned int code = hi >> 24;
+			int wr = (code == 0x04 || code == 0x90 ||
+				  code == 0x91);
+
+			if (k < 8 || wr)
+				pr_info("[ISP][DIAG CQTBL3] cnt=%d thr=%d k=%d code=0x%x arga=0x%x val=0x%x%s\n",
+					aao3s_cnt, t, k / 2, code,
+					hi & 0xffffffU, lo,
+					(wr && ((hi & 0xffffU) == 0x44a0)) ?
+					" <=AAO" : "");
+		}
+	}
+}
+
+static DECLARE_WORK(aao3_diag_work, aao3_diag_work_fn);
+#endif
+
+
+#ifdef ISP_TEMP_DIAG_AAO_RAW3
 		{
 			static int aao3_cnt;
 			unsigned int aao3_reg =
@@ -11853,141 +11924,26 @@ LB_CAM_SOF_IGNORE:
 						aao3_cnt, aao3_reg);
 				}
 
-				/* TEMP DIAG round11: read the AAO stat buffer
-				 * and the FH buffer through their real PA
-				 * (IOVA translated via iommu) - this is what
-				 * the DMA actually wrote; the direct __va path
-				 * above reads a wrong physical page.
-				 */
-				{
-					unsigned long aao3_tpa;
-					unsigned long aao3_tva;
-					unsigned int *aao3_tp;
-					unsigned int aao3_tsrc[2];
-					int aao3_tret, aao3_tk, aao3_td;
 
-					aao3_tsrc[0] = aao3_reg;
-					aao3_tsrc[1] = aao3_fh;
-					for (aao3_td = 0; aao3_td < 2;
-					     aao3_td++) {
-						aao3_tpa = 0;
-						for (aao3_tk = 0;
-						     aao3_tk < nr_isp_devs;
-						     aao3_tk++) {
-							if (mtk_iommu_iova_to_pa(
-								    isp_devs[aao3_tk].dev,
-								    (dma_addr_t)aao3_tsrc[aao3_td],
-								    &aao3_tpa) == 0 &&
-							    aao3_tpa != 0)
-								break;
-						}
-						if (aao3_tpa == 0) {
-							pr_info("[ISP][DIAG AAO3T] FAIL cnt=%d src=%d iova=0x%x\n",
-								aao3_cnt, aao3_td,
-								aao3_tsrc[aao3_td]);
-							continue;
-						}
-						aao3_tva = (unsigned long)__va(aao3_tpa &
-							0xfffff000UL);
-						__inval_dcache_area((void *)aao3_tva,
-								    0x1000);
-						aao3_tp = (unsigned int *)(aao3_tva +
-							(aao3_tpa & 0xfffU));
-						for (aao3_tret = 0; aao3_tret < 8;
-						     aao3_tret++)
-							pr_info("[ISP][DIAG AAO3T] cnt=%d src=%d iova=0x%x pa=0x%lx dw%d=%08x\n",
-								aao3_cnt, aao3_td,
-								aao3_tsrc[aao3_td],
-								aao3_tpa, aao3_tret,
-								aao3_tp[aao3_tret]);
-					}
-				}
-
-				/* TEMP DIAG round11: translate every registered
-				 * CQ thread table IOVA to real PA via the iommu
-				 * (round-10 __va'd the IOVA itself and read
-				 * kernel text pages instead of the tables),
-				 * then decode the GCE instruction stream:
-				 *   u64 = ((code<<24)|arg_a)<<32 | arg_b
-				 *   LE pair: p[2k]=arg_b(value),
-				 *            p[2k+1]=(code<<24)|arg_a
-				 * Print the table head (format check) and
-				 * every WRITE instruction (code 0x04/0x90/0x91),
-				 * flagging reg 0x44A0 (AAO_BASE_ADDR).
-				 */
-				{
-					int cq_t, cq_dev;
-
-					for (cq_t = 0; cq_t < 25; cq_t++) {
-						unsigned int cq_base =
-							g_cqBaseAddr[0][cq_t];
-						unsigned long cq_pa = 0;
-						unsigned long cq_va;
-						unsigned int *cq_p;
-						int cq_k;
-
-						if (cq_base == 0)
-							continue;
-						for (cq_dev = 0;
-						     cq_dev < nr_isp_devs;
-						     cq_dev++) {
-							if (mtk_iommu_iova_to_pa(
-								    isp_devs[cq_dev].dev,
-								    (dma_addr_t)cq_base,
-								    &cq_pa) == 0 &&
-							    cq_pa != 0)
-								break;
-						}
-						if (cq_pa == 0) {
-							if (aao3_cnt < 4)
-								pr_info("[ISP][DIAG CQTBL3] FAIL cnt=%d thr=%d iova=0x%x\n",
-									aao3_cnt,
-									cq_t,
-									cq_base);
-							continue;
-						}
-						if (aao3_cnt >= 4)
-							continue;
-						cq_va = (unsigned long)__va(cq_pa &
-							0xfffff000UL);
-						__inval_dcache_area((void *)cq_va,
-								    0x1000);
-						cq_p = (unsigned int *)(cq_va +
-							(cq_pa & 0xfffU));
-						pr_info("[ISP][DIAG CQTBL3] cnt=%d thr=%d iova=0x%x pa=0x%lx\n",
-							aao3_cnt, cq_t, cq_base,
-							cq_pa);
-						for (cq_k = 0; cq_k + 1 < 64;
-						     cq_k += 2) {
-							unsigned int cq_hi =
-								cq_p[cq_k + 1];
-							unsigned int cq_lo =
-								cq_p[cq_k];
-							unsigned int cq_code =
-								cq_hi >> 24;
-							int cq_wr = (cq_code ==
-								0x04 ||
-								cq_code == 0x90 ||
-								cq_code == 0x91);
-
-							if (cq_k < 8 || cq_wr)
-								pr_info("[ISP][DIAG CQTBL3] cnt=%d thr=%d k=%d code=0x%x arga=0x%x val=0x%x%s\n",
-									aao3_cnt,
-									cq_t,
-									cq_k / 2,
-									cq_code,
-									cq_hi &
-									0xffffffU,
-									cq_lo,
-									(cq_wr &&
-									 ((cq_hi & 0xffffU)
-									  == 0x44a0)) ?
-									" <=AAO" :
-									"");
-						}
-					}
-				}
 			}
+			/* TEMP DIAG round12: snapshot regs and CQ table
+			 * IOVAs, translate them in a workqueue - the
+			 * pseudo_m4u registry walk takes a mutex which the
+			 * ISR cannot hold (round-11's iommu-domain walk
+			 * failed: the isp dev has no domain).
+			 */
+			{
+				int cq_i;
+
+				aao3s_reg = aao3_reg;
+				aao3s_fh = aao3_fh;
+				aao3s_cnt = aao3_cnt;
+				for (cq_i = 0; cq_i < 25; cq_i++)
+					aao3s_cq[cq_i] =
+						g_cqBaseAddr[0][cq_i];
+				schedule_work(&aao3_diag_work);
+			}
+
 			aao3_cnt++;
 		}
 #endif
