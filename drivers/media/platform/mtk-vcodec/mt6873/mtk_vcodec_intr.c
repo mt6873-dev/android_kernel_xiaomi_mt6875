@@ -286,12 +286,15 @@ int mtk_vcodec_dec_irq_setup(struct platform_device *pdev,
 	for (i = 0; i < MTK_VDEC_HW_NUM; i++) {
 		dev->dec_irq[i] = platform_get_irq(pdev, i);
 		if (i == MTK_VDEC_CORE)
-			ret = devm_request_irq(&pdev->dev, dev->dec_irq[i],
-				mtk_vcodec_dec_irq_handler, 0, pdev->name, dev);
+			ret = devm_request_threaded_irq(&pdev->dev,
+				dev->dec_irq[i], mtk_vcodec_dec_irq_handler,
+				NULL, IRQF_NO_THREAD | IRQF_PROBE_SHARED |
+				IRQF_SHARED, pdev->name, dev);
 		else if (i == MTK_VDEC_LAT)
-			ret = devm_request_irq(&pdev->dev, dev->dec_irq[i],
-				mtk_vcodec_lat_dec_irq_handler, 0,
-					pdev->name, dev);
+			ret = devm_request_threaded_irq(&pdev->dev,
+				dev->dec_irq[i],
+				mtk_vcodec_lat_dec_irq_handler, NULL, 0,
+				pdev->name, dev);
 		if (ret) {
 			mtk_v4l2_debug(1, "Failed to install dev->dec_irq[%d] %d (%d)",
 					i, dev->dec_irq[i],
