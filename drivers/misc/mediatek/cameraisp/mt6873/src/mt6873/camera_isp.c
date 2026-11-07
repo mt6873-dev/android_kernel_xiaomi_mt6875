@@ -11756,6 +11756,52 @@ LB_CAM_SOF_IGNORE:
 					aao3_cnt, module, reg_module,
 					aao3_reg, aao3_fh, aao3_err,
 					aao3_con, aao3_con2, aao3_con3, aao3_drs);
+
+			/* Dump what the DMA actually wrote: the frame-header
+			 * buffer (fh, +28B mystery) and the head of the stat
+			 * buffer, right at AAO_DONE time. DRAM PA guard first
+			 * so a stale register value cannot fault the ISR.
+			 */
+			if (aao3_cnt < 8) {
+				unsigned long aao3_pa;
+				void *aao3_va;
+				unsigned int *aao3_p;
+				int aao3_k;
+
+				aao3_pa = aao3_fh & 0xfffff000U;
+				if (aao3_pa >= 0x40000000UL &&
+				    aao3_pa < 0x140000000UL) {
+					aao3_va = __va(aao3_pa);
+					__inval_dcache_area(aao3_va, 28);
+					aao3_p = (unsigned int *)((char *)aao3_va +
+							 (aao3_fh & 0xfffU));
+					pr_info("[ISP][DIAG AAO3FH] cnt=%d fh=0x%x w0=%08x w1=%08x w2=%08x w3=%08x w4=%08x w5=%08x w6=%08x\n",
+						aao3_cnt, aao3_fh,
+						aao3_p[0], aao3_p[1], aao3_p[2],
+						aao3_p[3], aao3_p[4], aao3_p[5],
+						aao3_p[6]);
+				} else {
+					pr_info("[ISP][DIAG AAO3FH] cnt=%d fh=0x%x PA_OOR\n",
+						aao3_cnt, aao3_fh);
+				}
+
+				aao3_pa = aao3_reg & 0xfffff000U;
+				if (aao3_pa >= 0x40000000UL &&
+				    aao3_pa < 0x140000000UL) {
+					aao3_va = __va(aao3_pa);
+					__inval_dcache_area(aao3_va, 64);
+					aao3_p = (unsigned int *)((char *)aao3_va +
+							 (aao3_reg & 0xfffU));
+					for (aao3_k = 0; aao3_k < 8; aao3_k++) {
+						pr_info("[ISP][DIAG AAO3DAT] cnt=%d reg=0x%x dw%d=%08x\n",
+							aao3_cnt, aao3_reg,
+							aao3_k, aao3_p[aao3_k]);
+					}
+				} else {
+					pr_info("[ISP][DIAG AAO3DAT] cnt=%d reg=0x%x PA_OOR\n",
+						aao3_cnt, aao3_reg);
+				}
+			}
 			aao3_cnt++;
 		}
 #endif
