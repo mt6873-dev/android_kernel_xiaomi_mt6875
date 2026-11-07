@@ -247,6 +247,7 @@ static signed int fdvt_dump_reg(void);
 /* TEMP DIAG round14: FD_POSE config buffer content at dump time.
  * Revert with the camera DIAG rounds. */
 extern unsigned long pseudo_m4u_iova_to_pa(unsigned long iova);
+extern void mtk_iommu_dump_iova_space(unsigned long target);
 static unsigned int fdvt_diag_pose_iova;
 static unsigned int fdvt_diag_pose_size;
 static int fdvt_diag_pose_seq;
@@ -1939,6 +1940,7 @@ static void fdvt_diag_dump_pose(void)
 		pr_info("[FDVT][DIAG POSE] FAIL iova=0x%x size=0x%x pa=0x%lx\n",
 			fdvt_diag_pose_iova, fdvt_diag_pose_size,
 			fdvt_diag_pa);
+		mtk_iommu_dump_iova_space(fdvt_diag_pose_iova);
 	}
 }
 

@@ -48,6 +48,7 @@
 #define ISP_TEMP_DIAG_AAO_RAW3 1
 extern unsigned long pseudo_m4u_iova_to_pa(unsigned long iova);
 extern unsigned int pseudo_m4u_mva_count(void);
+extern void mtk_iommu_dump_iova_space(unsigned long target);
 #include <linux/spinlock.h>
 #include <linux/types.h>
 #include <linux/uaccess.h>
@@ -678,12 +679,13 @@ static void aao3_diag_work_fn(struct work_struct *work)
 		if (!pa) {
 			pr_info("[ISP][DIAG AAO3T] FAIL cnt=%d src=%d iova=0x%x mvaN=%u\n",
 				aao3s_cnt, t, iova, pseudo_m4u_mva_count());
+			mtk_iommu_dump_iova_space(iova);
 			continue;
 		}
 		va = (unsigned long)__va(pa & ~0xfffUL);
 		__inval_dcache_area((void *)va, 0x1000);
 		p = (unsigned int *)(va + (pa & 0xfffU));
-		for (k = 0; k < 8; k++)
+		for (k = 0; k < 32; k++)
 			pr_info("[ISP][DIAG AAO3T] cnt=%d src=%d iova=0x%x pa=0x%lx dw%d=%08x\n",
 				aao3s_cnt, t, iova, pa, k, p[k]);
 	}
@@ -717,6 +719,7 @@ static void aao3_cq_work_fn(struct work_struct *work)
 			pr_info("[ISP][DIAG CQTBL3] FAIL seq=%d thr=%d iova=0x%x mvaN=%u\n",
 				aao3s_cq_seq, t, iova,
 				pseudo_m4u_mva_count());
+			mtk_iommu_dump_iova_space(iova);
 			continue;
 		}
 		va = (unsigned long)__va(pa & ~0xfffUL);
