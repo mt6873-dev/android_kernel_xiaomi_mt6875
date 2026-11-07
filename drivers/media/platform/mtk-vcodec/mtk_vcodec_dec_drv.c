@@ -34,8 +34,6 @@
 #include "mtk_vcodec_util.h"
 #include "mtk_vcu.h"
 
-/* TEMP DIAG for dec irq registration state; remove after logs */
-#define VDEC_IRQ_DIAG 1
 
 module_param(mtk_v4l2_dbg_level, int, 0644);
 module_param(mtk_vcodec_dbg, bool, 0644);
@@ -123,13 +121,6 @@ static int fops_vcodec_open(struct file *file)
 	list_add(&ctx->list, &dev->ctx_list);
 	dev->dec_cnt++;
 
-#ifdef VDEC_IRQ_DIAG
-	/* TEMP DIAG: print dec irq state at open time (the probe-time
-	 * prints get rotated out of the dmesg ring by the DSI debug spam).
-	 */
-	pr_info("[VDEC][DIAG IRQ2] open ctx=%d core_irq=%d lat_irq=%d\n",
-		ctx->id, dev->dec_irq[MTK_VDEC_CORE], dev->dec_irq[MTK_VDEC_LAT]);
-#endif
 
 	mutex_unlock(&dev->dev_mutex);
 	mtk_v4l2_debug(0, "%s decoder [%d]", dev_name(&dev->plat_dev->dev),

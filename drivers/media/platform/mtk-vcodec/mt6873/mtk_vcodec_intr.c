@@ -15,11 +15,6 @@
 
 #include <linux/errno.h>
 
-/* TEMP DIAG for vdec LAT ISR stall; remove after collecting logs */
-#define VDEC_LAT_DIAG 1
-#define VDEC_CORE_ISR_DIAG 1
-/* TEMP DIAG: log dec irq request results (shared-line registration) */
-#define VDEC_IRQ_DIAG 1
 #include <linux/wait.h>
 
 #include "mtk_vcodec_intr.h"
@@ -52,10 +47,6 @@ int mtk_vcodec_wait_for_done_ctx(struct mtk_vcodec_ctx  *ctx,
 		mtk_v4l2_err("[%d] cmd=%d, ctx->type=%d, core_id %d timeout time=%ums out %d %d!",
 			ctx->id, ctx->type, core_id, command, timeout_ms,
 			ctx->int_cond[core_id], ctx->int_type);
-#ifdef VDEC_LAT_DIAG
-		pr_info("[VDEC_LAT_DIAG] timeout hw=%d cmd=%d cond=%d type=0x%x\n",
-			core_id, command, ctx->int_cond[core_id], ctx->int_type);
-#endif
 	} else if (-ERESTARTSYS == ret) {
 		mtk_v4l2_err("[%d] cmd=%d, ctx->type=%d, core_id %d timeout interrupted by a signal %d %d",
 			ctx->id, ctx->type, core_id,
@@ -87,16 +78,6 @@ irqreturn_t mtk_vcodec_dec_irq_handler(int irq, void *priv)
 	unsigned int dec_done_status = 0;
 	void __iomem *vdec_misc_addr = dev->dec_reg_base[VDEC_MISC] +
 		MTK_VDEC_IRQ_CFG_REG;
-#ifdef VDEC_CORE_ISR_DIAG
-	{
-		static atomic_t diag_core_isr = ATOMIC_INIT(0);
-		int n = atomic_inc_return(&diag_core_isr);
-
-		if (n <= 8 || (n % 1000) == 0)
-			pr_info("[VDEC_CORE_DIAG] CORE_ISR#%d irq=%d\n",
-				n, irq);
-	}
-#endif
 
 	ctx = mtk_vcodec_get_curr_ctx(dev, MTK_VDEC_CORE);
 	if (ctx == NULL)
@@ -112,20 +93,6 @@ irqreturn_t mtk_vcodec_dec_irq_handler(int irq, void *priv)
 
 	dec_done_status = readl(vdec_misc_addr);
 	ctx->irq_status = dec_done_status;
-#ifdef VDEC_CORE_ISR_DIAG
-	{
-		static atomic_t diag_core_st = ATOMIC_INIT(0);
-		int n = atomic_inc_return(&diag_core_st);
-
-		if (n <= 8 || (n % 1000) == 0)
-			pr_info("[VDEC_CORE_DIAG] cst#%d cg=0x%x hw_active=%d done=0x%x succ=%d\n",
-				n, cg_status,
-				!!(cg_status & MTK_VDEC_HW_ACTIVE),
-				dec_done_status,
-				!!(dec_done_status &
-				   MTK_VDEC_IRQ_STATUS_DEC_SUCCESS));
-	}
-#endif
 	if ((dec_done_status & MTK_VDEC_IRQ_STATUS_DEC_SUCCESS) !=
 		MTK_VDEC_IRQ_STATUS_DEC_SUCCESS)
 		return IRQ_HANDLED;
@@ -156,16 +123,6 @@ irqreturn_t mtk_vcodec_lat_dec_irq_handler(int irq, void *priv)
 	void __iomem *vdec_misc_addr = dev->dec_reg_base[VDEC_LAT_MISC] +
 		MTK_VDEC_IRQ_CFG_REG;
 
-#ifdef VDEC_LAT_DIAG
-	{
-		static atomic_t diag_lat_isr = ATOMIC_INIT(0);
-		int n = atomic_inc_return(&diag_lat_isr);
-
-		if (n <= 8 || (n % 1000) == 0)
-			pr_info("[VDEC_LAT_DIAG] ISR#%d irq=%d\n",
-				n, irq);
-	}
-#endif
 
 	ctx = mtk_vcodec_get_curr_ctx(dev, MTK_VDEC_LAT);
 	if (ctx == NULL)
@@ -181,20 +138,6 @@ irqreturn_t mtk_vcodec_lat_dec_irq_handler(int irq, void *priv)
 
 	dec_done_status = readl(vdec_misc_addr);
 	ctx->irq_status = dec_done_status;
-#ifdef VDEC_LAT_DIAG
-	{
-		static atomic_t diag_lat_st2 = ATOMIC_INIT(0);
-		int n = atomic_inc_return(&diag_lat_st2);
-
-		if (n <= 8 || (n % 1000) == 0)
-			pr_info("[VDEC_LAT_DIAG] st#%d cg=0x%x hw_active=%d done=0x%x succ=%d\n",
-				n, cg_status,
-				!!(cg_status & MTK_VDEC_HW_ACTIVE),
-				dec_done_status,
-				!!(dec_done_status &
-				   MTK_VDEC_IRQ_STATUS_DEC_SUCCESS));
-	}
-#endif
 	if ((dec_done_status & MTK_VDEC_IRQ_STATUS_DEC_SUCCESS) !=
 		MTK_VDEC_IRQ_STATUS_DEC_SUCCESS)
 		return IRQ_HANDLED;
@@ -312,20 +255,10 @@ int mtk_vcodec_dec_irq_setup(struct platform_device *pdev,
 				trig, pdev->name, dev);
 		}
 		if (ret) {
-#ifdef VDEC_IRQ_DIAG
-			pr_info("[VDEC][DIAG IRQ] req i=%d irq=%d ret=%d FAIL\n",
-				i, dev->dec_irq[i], ret);
-#endif
 			mtk_v4l2_debug(1, "Failed to install dev->dec_irq[%d] %d (%d)",
 					i, dev->dec_irq[i],
 					ret);
 		}
-#ifdef VDEC_IRQ_DIAG
-		else {
-			pr_info("[VDEC][DIAG IRQ] req i=%d irq=%d ret=0 OK\n",
-				i, dev->dec_irq[i]);
-		}
-#endif
 		disable_irq(dev->dec_irq[i]);
 	}
 #endif
