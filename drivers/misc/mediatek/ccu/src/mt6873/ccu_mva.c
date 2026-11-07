@@ -17,6 +17,10 @@
 #include "ccu_platform_def.h"
 #include <linux/timekeeping.h>
 #include <linux/string.h>
+#if defined(CONFIG_MTK_M4U) || defined(CONFIG_MTK_PSEUDO_M4U)
+/* struct M4U_PORT_STRUCT + m4u_config_port() live here on pseudo_m4u builds */
+#include "mach/pseudo_m4u.h"
+#endif
 
 /*
  * 官核依据:
@@ -154,17 +158,44 @@ int ccu_config_m4u_port(void)
 {
 	int ret = 0;
 
-#if defined(CONFIG_MTK_M4U)
+#if defined(CONFIG_MTK_M4U) || defined(CONFIG_MTK_PSEUDO_M4U)
 	struct M4U_PORT_STRUCT port;
 
-	port.ePortID = M4U_PORT_CCU0;
+	/*
+	 * Stock kernel (ccu_config_m4u_port @0xffffff8008ca76b0) programs
+	 * TWO ports, both with domain=2, Virtuality=1, Distance=1:
+	 *   0x1a9 = M4U_PORT_L13_CAM_CCUI
+	 *   0x1aa = M4U_PORT_L13_CAM_CCUO
+	 * (objdump: str w0,#0x1a9 ; str w0,#0x2 at [sp,#0xc] ; ... then the
+	 *  same block with 0x1aa). m4u_config_port() translates the port to
+	 * its larb device and writes the IOMMU boundary into
+	 * SMI_LARB_NON_SEC_CONx, so this must run before any CCU buffer is
+	 * mapped - otherwise the PTE lands in domain 0 while the CCU writes
+	 * through the domain-2 translation, producing
+	 * "<<TRANSLATION FAULT>> port=L13_CAM_CCUO pa=0x0".
+	 *
+	 * The previous code only configured M4U_PORT_CCU0 (=L23_CCU1, 0x2e0)
+	 * with domain=3, and the whole body was compiled out on this
+	 * platform (CONFIG_MTK_M4U is not set, only PSEUDO_M4U is), so no
+	 * port was ever configured at all.
+	 */
 	port.Virtuality = 1;
 	port.Security = 0;
-	port.domain = 3;
+	port.domain = 2;
 	port.Distance = 1;
 	port.Direction = 0;
 
+	port.ePortID = M4U_PORT_L13_CAM_CCUI;
 	ret = m4u_config_port(&port);
+	if (ret)
+		LOG_ERR("ccu_config_m4u_port: config CCUI(0x%x) fail %d\n",
+			M4U_PORT_L13_CAM_CCUI, ret);
+
+	port.ePortID = M4U_PORT_L13_CAM_CCUO;
+	ret = m4u_config_port(&port);
+	if (ret)
+		LOG_ERR("ccu_config_m4u_port: config CCUO(0x%x) fail %d\n",
+			M4U_PORT_L13_CAM_CCUO, ret);
 #endif
 	return ret;
 }
