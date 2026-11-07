@@ -292,16 +292,30 @@ int mtk_vcodec_dec_irq_setup(struct platform_device *pdev,
 
 	for (i = 0; i < MTK_VDEC_HW_NUM; i++) {
 		dev->dec_irq[i] = platform_get_irq(pdev, i);
-		if (i == MTK_VDEC_CORE)
+		if (i == MTK_VDEC_CORE) {
+			/* Carry the line's existing trigger type: the genirq
+			 * share check compares it against the request flags
+			 * and trusty registered first with the DT level type,
+			 * so requesting without it fails -EBUSY. Stock gets
+			 * away with plain 0x10180 only because vdec registers
+			 * before trusty there (first action skips the check).
+			 */
+			unsigned long trig =
+				irq_get_trigger_type(dev->dec_irq[i]);
+
 			ret = devm_request_threaded_irq(&pdev->dev,
 				dev->dec_irq[i], mtk_vcodec_dec_irq_handler,
 				NULL, IRQF_NO_THREAD | IRQF_PROBE_SHARED |
-				IRQF_SHARED, pdev->name, dev);
-		else if (i == MTK_VDEC_LAT)
+				IRQF_SHARED | trig, pdev->name, dev);
+		} else if (i == MTK_VDEC_LAT) {
+			unsigned long trig =
+				irq_get_trigger_type(dev->dec_irq[i]);
+
 			ret = devm_request_threaded_irq(&pdev->dev,
 				dev->dec_irq[i],
-				mtk_vcodec_lat_dec_irq_handler, NULL, 0,
-				pdev->name, dev);
+				mtk_vcodec_lat_dec_irq_handler, NULL,
+				trig, pdev->name, dev);
+		}
 #ifdef VDEC_IRQ_DIAG
 		vdec_irq_req_ret[i] = ret;
 #endif
