@@ -2713,6 +2713,23 @@ unsigned long pseudo_m4u_iova_to_pa(unsigned long iova)
 }
 EXPORT_SYMBOL(pseudo_m4u_iova_to_pa);
 
+/* TEMP DIAG: number of registered MVA mappings (registry state probe) */
+unsigned int pseudo_m4u_mva_count(void)
+{
+	struct m4u_client_t *client = ion_m4u_client;
+	struct m4u_buf_info_t *p;
+	unsigned int n = 0;
+
+	if (!client)
+		return 0;
+	mutex_lock(&client->dataMutex);
+	list_for_each_entry(p, &client->mvaList, link)
+		n++;
+	mutex_unlock(&client->dataMutex);
+	return n;
+}
+EXPORT_SYMBOL(pseudo_m4u_mva_count);
+
 #ifdef PSEUDO_M4U_TEE_SERVICE_ENABLE
 static DEFINE_MUTEX(gM4u_sec_init);
 bool m4u_tee_en;

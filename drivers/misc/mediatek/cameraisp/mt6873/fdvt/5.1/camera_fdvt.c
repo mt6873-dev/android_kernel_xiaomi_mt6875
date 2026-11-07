@@ -249,6 +249,8 @@ static signed int fdvt_dump_reg(void);
 extern unsigned long pseudo_m4u_iova_to_pa(unsigned long iova);
 static unsigned int fdvt_diag_pose_iova;
 static unsigned int fdvt_diag_pose_size;
+static int fdvt_diag_pose_seq;
+static void fdvt_diag_dump_pose(void);
 
 typedef irqreturn_t(*IRQ_CB) (signed int, void *);
 
@@ -1522,6 +1524,10 @@ static signed int config_fdvt_hw(struct fdvt_config *basic_config)
 			basic_config->FDVT_FD_POSE_CON_BASE_ADR;
 		fdvt_diag_pose_size =
 			basic_config->FDVT_FD_POSE_CON_BUFSIZE;
+		if (fdvt_diag_pose_seq < 2) {
+			fdvt_diag_pose_seq++;
+			fdvt_diag_dump_pose();
+		}
 		cmdq_pkt_write(pkt, NULL, FDVT_FD_CON_BASE_ADR_HW,
 			       basic_config->FDVT_FD_POSE_CON_BASE_ADR,
 			       CMDQ_REG_MASK);
@@ -1911,6 +1917,31 @@ static bool check_fdvt_is_busy(void)
 /*
  *
  */
+static void fdvt_diag_dump_pose(void)
+{
+	unsigned long fdvt_diag_pa, fdvt_diag_va;
+	unsigned int *fdvt_diag_p;
+	int fdvt_diag_k;
+
+	fdvt_diag_pa = pseudo_m4u_iova_to_pa(fdvt_diag_pose_iova);
+	if (fdvt_diag_pose_iova && fdvt_diag_pa) {
+		fdvt_diag_va =
+			(unsigned long)__va(fdvt_diag_pa & ~0xfffUL);
+		__inval_dcache_area((void *)fdvt_diag_va, 0x1000);
+		fdvt_diag_p = (unsigned int *)(fdvt_diag_va +
+			(fdvt_diag_pa & 0xfffU));
+		for (fdvt_diag_k = 0; fdvt_diag_k < 8; fdvt_diag_k++)
+			pr_info("[FDVT][DIAG POSE] iova=0x%x size=0x%x pa=0x%lx dw%d=%08x\n",
+				fdvt_diag_pose_iova,
+				fdvt_diag_pose_size, fdvt_diag_pa,
+				fdvt_diag_k, fdvt_diag_p[fdvt_diag_k]);
+	} else {
+		pr_info("[FDVT][DIAG POSE] FAIL iova=0x%x size=0x%x pa=0x%lx\n",
+			fdvt_diag_pose_iova, fdvt_diag_pose_size,
+			fdvt_diag_pa);
+	}
+}
+
 static signed int fdvt_dump_reg(void)
 {
 	signed int ret = 0;
@@ -1921,29 +1952,7 @@ static signed int fdvt_dump_reg(void)
 
 	request = &fdvt_req_ring.req_struct[i];
 #endif
-	{
-		unsigned long fdvt_diag_pa, fdvt_diag_va;
-		unsigned int *fdvt_diag_p;
-		int fdvt_diag_k;
-
-		fdvt_diag_pa = pseudo_m4u_iova_to_pa(fdvt_diag_pose_iova);
-		if (fdvt_diag_pose_iova && fdvt_diag_pa) {
-			fdvt_diag_va =
-				(unsigned long)__va(fdvt_diag_pa & ~0xfffUL);
-			__inval_dcache_area((void *)fdvt_diag_va, 0x1000);
-			fdvt_diag_p = (unsigned int *)(fdvt_diag_va +
-				(fdvt_diag_pa & 0xfffU));
-			for (fdvt_diag_k = 0; fdvt_diag_k < 8; fdvt_diag_k++)
-				pr_info("[FDVT][DIAG POSE] iova=0x%x size=0x%x pa=0x%lx dw%d=%08x\n",
-					fdvt_diag_pose_iova,
-					fdvt_diag_pose_size, fdvt_diag_pa,
-					fdvt_diag_k, fdvt_diag_p[fdvt_diag_k]);
-		} else {
-			pr_info("[FDVT][DIAG POSE] FAIL iova=0x%x size=0x%x pa=0x%lx\n",
-				fdvt_diag_pose_iova, fdvt_diag_pose_size,
-				fdvt_diag_pa);
-		}
-	}
+	fdvt_diag_dump_pose();
 	log_inf("- E.");
 	log_inf("FDVT Config Info\n");
 	log_inf("[0x%08X %08X]\n", (unsigned int)(FDVT_START_HW),

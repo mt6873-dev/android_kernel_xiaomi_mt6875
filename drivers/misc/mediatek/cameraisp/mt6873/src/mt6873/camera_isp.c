@@ -47,6 +47,7 @@
  */
 #define ISP_TEMP_DIAG_AAO_RAW3 1
 extern unsigned long pseudo_m4u_iova_to_pa(unsigned long iova);
+extern unsigned int pseudo_m4u_mva_count(void);
 #include <linux/spinlock.h>
 #include <linux/types.h>
 #include <linux/uaccess.h>
@@ -675,8 +676,8 @@ static void aao3_diag_work_fn(struct work_struct *work)
 
 		pa = pseudo_m4u_iova_to_pa(iova);
 		if (!pa) {
-			pr_info("[ISP][DIAG AAO3T] FAIL cnt=%d src=%d iova=0x%x\n",
-				aao3s_cnt, t, iova);
+			pr_info("[ISP][DIAG AAO3T] FAIL cnt=%d src=%d iova=0x%x mvaN=%u\n",
+				aao3s_cnt, t, iova, pseudo_m4u_mva_count());
 			continue;
 		}
 		va = (unsigned long)__va(pa & ~0xfffUL);
@@ -687,6 +688,25 @@ static void aao3_diag_work_fn(struct work_struct *work)
 				aao3s_cnt, t, iova, pa, k, p[k]);
 	}
 
+}
+
+static DECLARE_WORK(aao3_diag_work, aao3_diag_work_fn);
+
+/* CQ table dump at SOF: the table is filled before the frame and
+ * consumed by the HW during it, so AAO_DONE is too late (round-13
+ * only saw the post-consumption residue). */
+static unsigned int aao3s_cq[25];
+static unsigned int aao3s_cq_seq;
+
+static void aao3_cq_work_fn(struct work_struct *work)
+{
+	unsigned long pa, va;
+	unsigned int *p;
+	int t, k;
+
+	if (aao3s_cq_seq >= 3)
+		return;
+
 	for (t = 0; t < 25; t++) {
 		unsigned int iova = aao3s_cq[t];
 
@@ -694,43 +714,33 @@ static void aao3_diag_work_fn(struct work_struct *work)
 			continue;
 		pa = pseudo_m4u_iova_to_pa(iova);
 		if (!pa) {
-			if (aao3s_cnt < 4)
-				pr_info("[ISP][DIAG CQTBL3] FAIL cnt=%d thr=%d iova=0x%x\n",
-					aao3s_cnt, t, iova);
+			pr_info("[ISP][DIAG CQTBL3] FAIL seq=%d thr=%d iova=0x%x mvaN=%u\n",
+				aao3s_cq_seq, t, iova,
+				pseudo_m4u_mva_count());
 			continue;
 		}
-		if (aao3s_cnt >= 4)
-			continue;
 		va = (unsigned long)__va(pa & ~0xfffUL);
 		__inval_dcache_area((void *)va, 0x1000);
 		p = (unsigned int *)(va + (pa & 0xfffU));
-		pr_info("[ISP][DIAG CQTBL3] cnt=%d thr=%d iova=0x%x pa=0x%lx\n",
-			aao3s_cnt, t, iova, pa);
-		/* CQ entry format from HAL CQ_SetContent (libcamdrv_isp.so):
-		 *   word0 = (offset & 0xffff) | ((module + 1) << 27)
-		 *   word1 = offset + virRegBase
-		 * tail entry: word0 = (module << 28) | 0x18004494.
-		 * Dump the full table and flag entries whose word0 low
-		 * 16 bits are 0x44A0 (AAO_BASE_ADDR) in either pairing.
-		 */
+		pr_info("[ISP][DIAG CQTBL3] seq=%d thr=%d iova=0x%x pa=0x%lx\n",
+			aao3s_cq_seq, t, iova, pa);
 		for (k = 0; k + 1 < 64; k += 2) {
 			unsigned int w0 = p[k];
 			unsigned int w1 = p[k + 1];
 			int hit = ((w0 & 0xffffU) == 0x44a0) ||
 				  ((w1 & 0xffffU) == 0x44a0);
 
-			if (aao3s_cnt < 3)
-				pr_info("[ISP][DIAG CQTBL3] cnt=%d thr=%d k=%d w0=%08x w1=%08x%s\n",
-					aao3s_cnt, t, k / 2, w0, w1,
-					hit ? " <=AAO_REG" : "");
-			else if (hit)
-				pr_info("[ISP][DIAG CQTBL3] cnt=%d thr=%d k=%d w0=%08x w1=%08x <=AAO_REG\n",
-					aao3s_cnt, t, k / 2, w0, w1);
+			if (hit)
+				pr_info("[ISP][DIAG CQTBL3] seq=%d thr=%d k=%d w0=%08x w1=%08x <=AAO_REG\n",
+					aao3s_cq_seq, t, k / 2, w0, w1);
+			else if (aao3s_cq_seq < 1)
+				pr_info("[ISP][DIAG CQTBL3] seq=%d thr=%d k=%d w0=%08x w1=%08x\n",
+					aao3s_cq_seq, t, k / 2, w0, w1);
 		}
 	}
 }
 
-static DECLARE_WORK(aao3_diag_work, aao3_diag_work_fn);
+static DECLARE_WORK(aao3_cq_work, aao3_cq_work_fn);
 #endif
 #if Lafi_WAM_CQ_ERR
 static unsigned int g_cqDoneStatus[ISP_CAM_C_IDX-ISP_CAM_A_IDX+1] = {0};
@@ -11845,6 +11855,16 @@ LB_CAM_SOF_IGNORE:
 	}
 	spin_unlock(&(IspInfo.SpinLockIrq[module]));
 	/*  */
+#ifdef ISP_TEMP_DIAG_AAO_RAW3
+	if (IrqStatus & SOF_INT_ST) {
+		int aao3_cq_i;
+
+		for (aao3_cq_i = 0; aao3_cq_i < 25; aao3_cq_i++)
+			aao3s_cq[aao3_cq_i] = g_cqBaseAddr[0][aao3_cq_i];
+		aao3s_cq_seq++;
+		schedule_work(&aao3_cq_work);
+	}
+#endif
 	if (IrqStatus & SOF_INT_ST) {
 		wake_up_interruptible(
 			&IspInfo.WaitQHeadCam[ISP_GetWaitQCamIndex(module)]
@@ -11941,14 +11961,9 @@ LB_CAM_SOF_IGNORE:
 			 * failed: the isp dev has no domain).
 			 */
 			{
-				int cq_i;
-
 				aao3s_reg = aao3_reg;
 				aao3s_fh = aao3_fh;
 				aao3s_cnt = aao3_cnt;
-				for (cq_i = 0; cq_i < 25; cq_i++)
-					aao3s_cq[cq_i] =
-						g_cqBaseAddr[0][cq_i];
 				schedule_work(&aao3_diag_work);
 			}
 
