@@ -11862,8 +11862,16 @@ LB_CAM_SOF_IGNORE:
 	if (IrqStatus & SOF_INT_ST) {
 		int aao3_cq_i;
 
+		/* Read the live CQ_THRx_BASEADDR hardware registers
+		 * (0x214 + thr*0xC) instead of g_cqBaseAddr: entry [0] of
+		 * that array is the garbage 0xC0086B2C payload and [1..24]
+		 * are only filled under Lafi_WAM_CQ_ERR (=0), so the array
+		 * never held the real table base addresses.
+		 */
 		for (aao3_cq_i = 0; aao3_cq_i < 25; aao3_cq_i++)
-			aao3s_cq[aao3_cq_i] = g_cqBaseAddr[0][aao3_cq_i];
+			aao3s_cq[aao3_cq_i] = ISP_RD32(
+				(void __iomem *)((char *)isp_devs[reg_module].regs
+				+ 0x214 + aao3_cq_i * 0xc));
 		aao3s_cq_seq++;
 		schedule_work(&aao3_cq_work);
 	}
