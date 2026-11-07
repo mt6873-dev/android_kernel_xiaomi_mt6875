@@ -11852,6 +11852,41 @@ LB_CAM_SOF_IGNORE:
 					pr_info("[ISP][DIAG AAO3DAT] cnt=%d reg=0x%x PA_OOR\n",
 						aao3_cnt, aao3_reg);
 				}
+
+				/* TEMP DIAG: dump the CQ table the GCE executes
+				 * (base registered via 0xC0086B2C) to find the
+				 * AAO_BASE_ADDR write instruction and compare
+				 * its value with what the DMA actually targets.
+				 */
+				aao3_pa = (unsigned long)g_cqBaseAddr[0][0] &
+					0xfffff000U;
+				if (aao3_pa >= 0x40000000UL &&
+				    aao3_pa < 0x140000000UL) {
+					unsigned int aao3_hit = 0;
+
+					aao3_va = __va(aao3_pa);
+					__inval_dcache_area(aao3_va, 256);
+					aao3_p = (unsigned int *)((char *)aao3_va +
+							 ((unsigned long)g_cqBaseAddr[0][0] & 0xfffU));
+					for (aao3_k = 0; aao3_k < 32; aao3_k++) {
+						/* GCE write insns carry the
+						 * target reg offset in the
+						 * low half; 0x44A0 is AAO_BASE.
+						 */
+						if ((aao3_p[aao3_k] & 0xffff) == 0x44a0 ||
+						    (aao3_p[aao3_k] >> 16 & 0xffff) == 0x44a0)
+							aao3_hit++;
+						pr_info("[ISP][DIAG CQTBL] cnt=%d i=%d v=%08x\n",
+							aao3_cnt, aao3_k,
+							aao3_p[aao3_k]);
+					}
+					pr_info("[ISP][DIAG CQTBL] cnt=%d base=0x%x aao_hits=%u\n",
+						aao3_cnt, g_cqBaseAddr[0][0],
+						aao3_hit);
+				} else {
+					pr_info("[ISP][DIAG CQTBL] cnt=%d base=0x%x PA_OOR\n",
+						aao3_cnt, g_cqBaseAddr[0][0]);
+				}
 			}
 			aao3_cnt++;
 		}
