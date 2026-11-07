@@ -127,16 +127,8 @@ static int fops_vcodec_open(struct file *file)
 	/* TEMP DIAG: print dec irq state at open time (the probe-time
 	 * prints get rotated out of the dmesg ring by the DSI debug spam).
 	 */
-	{
-		extern int vdec_irq_req_ret[];
-
-		pr_info("[VDEC][DIAG IRQ2] open ctx=%d core_irq=%d ret=%d lat_irq=%d ret=%d\n",
-			ctx->id,
-			dev->dec_irq[MTK_VDEC_CORE],
-			vdec_irq_req_ret[MTK_VDEC_CORE],
-			dev->dec_irq[MTK_VDEC_LAT],
-			vdec_irq_req_ret[MTK_VDEC_LAT]);
-	}
+	pr_info("[VDEC][DIAG IRQ2] open ctx=%d core_irq=%d lat_irq=%d\n",
+		ctx->id, dev->dec_irq[MTK_VDEC_CORE], dev->dec_irq[MTK_VDEC_LAT]);
 #endif
 
 	mutex_unlock(&dev->dev_mutex);
