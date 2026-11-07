@@ -706,19 +706,26 @@ static void aao3_diag_work_fn(struct work_struct *work)
 		p = (unsigned int *)(va + (pa & 0xfffU));
 		pr_info("[ISP][DIAG CQTBL3] cnt=%d thr=%d iova=0x%x pa=0x%lx\n",
 			aao3s_cnt, t, iova, pa);
+		/* CQ entry format from HAL CQ_SetContent (libcamdrv_isp.so):
+		 *   word0 = (offset & 0xffff) | ((module + 1) << 27)
+		 *   word1 = offset + virRegBase
+		 * tail entry: word0 = (module << 28) | 0x18004494.
+		 * Dump the full table and flag entries whose word0 low
+		 * 16 bits are 0x44A0 (AAO_BASE_ADDR) in either pairing.
+		 */
 		for (k = 0; k + 1 < 64; k += 2) {
-			unsigned int hi = p[k + 1];
-			unsigned int lo = p[k];
-			unsigned int code = hi >> 24;
-			int wr = (code == 0x04 || code == 0x90 ||
-				  code == 0x91);
+			unsigned int w0 = p[k];
+			unsigned int w1 = p[k + 1];
+			int hit = ((w0 & 0xffffU) == 0x44a0) ||
+				  ((w1 & 0xffffU) == 0x44a0);
 
-			if (k < 8 || wr)
-				pr_info("[ISP][DIAG CQTBL3] cnt=%d thr=%d k=%d code=0x%x arga=0x%x val=0x%x%s\n",
-					aao3s_cnt, t, k / 2, code,
-					hi & 0xffffffU, lo,
-					(wr && ((hi & 0xffffU) == 0x44a0)) ?
-					" <=AAO" : "");
+			if (aao3s_cnt < 3)
+				pr_info("[ISP][DIAG CQTBL3] cnt=%d thr=%d k=%d w0=%08x w1=%08x%s\n",
+					aao3s_cnt, t, k / 2, w0, w1,
+					hit ? " <=AAO_REG" : "");
+			else if (hit)
+				pr_info("[ISP][DIAG CQTBL3] cnt=%d thr=%d k=%d w0=%08x w1=%08x <=AAO_REG\n",
+					aao3s_cnt, t, k / 2, w0, w1);
 		}
 	}
 }
