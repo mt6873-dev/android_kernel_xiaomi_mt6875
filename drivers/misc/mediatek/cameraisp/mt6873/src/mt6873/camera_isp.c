@@ -3045,15 +3045,15 @@ static int ISP_WriteRegToHw(struct ISP_REG_STRUCT *pReg, unsigned int Count)
 
 		if (((regBase + pReg[i].Addr) < (regBase + ispRange))) {
 #ifdef ISP_TEMP_DIAG_AAO_RAW3
-			/* TEMP DIAG: log HAL writes into the AAO register window
-			 * (AAO_BASE_ADDR 0x44A0 .. AAHO_CON3 0x4450/0x44FF) so the
-			 * A12 HAL's AAO format programming can be compared with
-			 * what the hardware actually runs with.
+			/* TEMP DIAG: log all HAL register writes (rate limited)
+			 * so the stat format/precision register - the one that
+			 * controls the 0x40000000 flag and the 32-bit layout of
+			 * AAO values - can be found by comparing with stock.
 			 */
-			if (pReg[i].Addr >= 0x4438 && pReg[i].Addr <= 0x44ff) {
+			{
 				static int aao3_wr_cnt;
 
-				if (aao3_wr_cnt < 48) {
+				if (aao3_wr_cnt < 256) {
 					pr_info("[ISP][DIAG AAO3WR] mdl=%d addr=0x%lx val=0x%x\n",
 						pReg->module,
 						(unsigned long)pReg[i].Addr,
