@@ -244,6 +244,11 @@ static signed int config_fdvt_hw(struct fdvt_config *basic_config);
 static signed int config_secure_fdvt_hw(struct fdvt_config *basic_config);
 static void fdvt_schedule_work(struct work_struct *data);
 static signed int fdvt_dump_reg(void);
+/* TEMP DIAG round14: FD_POSE config buffer content at dump time.
+ * Revert with the camera DIAG rounds. */
+extern unsigned long pseudo_m4u_iova_to_pa(unsigned long iova);
+static unsigned int fdvt_diag_pose_iova;
+static unsigned int fdvt_diag_pose_size;
 
 typedef irqreturn_t(*IRQ_CB) (signed int, void *);
 
@@ -1513,6 +1518,10 @@ static signed int config_fdvt_hw(struct fdvt_config *basic_config)
 
 		cmdq_pkt_write(pkt, NULL, FDVT_INT_EN_HW, 0x1, CMDQ_REG_MASK);
 
+		fdvt_diag_pose_iova =
+			basic_config->FDVT_FD_POSE_CON_BASE_ADR;
+		fdvt_diag_pose_size =
+			basic_config->FDVT_FD_POSE_CON_BUFSIZE;
 		cmdq_pkt_write(pkt, NULL, FDVT_FD_CON_BASE_ADR_HW,
 			       basic_config->FDVT_FD_POSE_CON_BASE_ADR,
 			       CMDQ_REG_MASK);
@@ -1904,6 +1913,29 @@ static bool check_fdvt_is_busy(void)
  */
 static signed int fdvt_dump_reg(void)
 {
+	{
+		unsigned long fdvt_diag_pa, fdvt_diag_va;
+		unsigned int *fdvt_diag_p;
+		int fdvt_diag_k;
+
+		fdvt_diag_pa = pseudo_m4u_iova_to_pa(fdvt_diag_pose_iova);
+		if (fdvt_diag_pose_iova && fdvt_diag_pa) {
+			fdvt_diag_va =
+				(unsigned long)__va(fdvt_diag_pa & ~0xfffUL);
+			__inval_dcache_area((void *)fdvt_diag_va, 0x1000);
+			fdvt_diag_p = (unsigned int *)(fdvt_diag_va +
+				(fdvt_diag_pa & 0xfffU));
+			for (fdvt_diag_k = 0; fdvt_diag_k < 8; fdvt_diag_k++)
+				pr_info("[FDVT][DIAG POSE] iova=0x%x size=0x%x pa=0x%lx dw%d=%08x\n",
+					fdvt_diag_pose_iova,
+					fdvt_diag_pose_size, fdvt_diag_pa,
+					fdvt_diag_k, fdvt_diag_p[fdvt_diag_k]);
+		} else {
+			pr_info("[FDVT][DIAG POSE] FAIL iova=0x%x size=0x%x pa=0x%lx\n",
+				fdvt_diag_pose_iova, fdvt_diag_pose_size,
+				fdvt_diag_pa);
+		}
+	}
 	signed int ret = 0;
 	signed int i = 0;
 #if 0
