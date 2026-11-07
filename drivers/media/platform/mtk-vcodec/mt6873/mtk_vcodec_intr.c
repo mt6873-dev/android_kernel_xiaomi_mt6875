@@ -18,6 +18,8 @@
 /* TEMP DIAG for vdec LAT ISR stall; remove after collecting logs */
 #define VDEC_LAT_DIAG 1
 #define VDEC_CORE_ISR_DIAG 1
+/* TEMP DIAG: log dec irq request results (shared-line registration) */
+#define VDEC_IRQ_DIAG 1
 #include <linux/wait.h>
 
 #include "mtk_vcodec_intr.h"
@@ -296,10 +298,20 @@ int mtk_vcodec_dec_irq_setup(struct platform_device *pdev,
 				mtk_vcodec_lat_dec_irq_handler, NULL, 0,
 				pdev->name, dev);
 		if (ret) {
+#ifdef VDEC_IRQ_DIAG
+			pr_info("[VDEC][DIAG IRQ] req i=%d irq=%d ret=%d FAIL\n",
+				i, dev->dec_irq[i], ret);
+#endif
 			mtk_v4l2_debug(1, "Failed to install dev->dec_irq[%d] %d (%d)",
 					i, dev->dec_irq[i],
 					ret);
 		}
+#ifdef VDEC_IRQ_DIAG
+		else {
+			pr_info("[VDEC][DIAG IRQ] req i=%d irq=%d ret=0 OK\n",
+				i, dev->dec_irq[i]);
+		}
+#endif
 		disable_irq(dev->dec_irq[i]);
 	}
 #endif
