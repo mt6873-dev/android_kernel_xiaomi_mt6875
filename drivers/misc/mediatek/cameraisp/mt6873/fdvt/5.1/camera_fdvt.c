@@ -1913,6 +1913,14 @@ static bool check_fdvt_is_busy(void)
  */
 static signed int fdvt_dump_reg(void)
 {
+	signed int ret = 0;
+	signed int i = 0;
+#if 0
+	unsigned int i = 0;
+	struct FDVT_REQUEST_STRUCT *request;
+
+	request = &fdvt_req_ring.req_struct[i];
+#endif
 	{
 		unsigned long fdvt_diag_pa, fdvt_diag_va;
 		unsigned int *fdvt_diag_p;
@@ -1936,14 +1944,6 @@ static signed int fdvt_dump_reg(void)
 				fdvt_diag_pa);
 		}
 	}
-	signed int ret = 0;
-	signed int i = 0;
-#if 0
-	unsigned int i = 0;
-	struct FDVT_REQUEST_STRUCT *request;
-
-	request = &fdvt_req_ring.req_struct[i];
-#endif
 	log_inf("- E.");
 	log_inf("FDVT Config Info\n");
 	log_inf("[0x%08X %08X]\n", (unsigned int)(FDVT_START_HW),
