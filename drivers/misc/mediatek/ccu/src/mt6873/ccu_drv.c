@@ -1033,6 +1033,10 @@ static long ccu_ioctl(struct file *flip, unsigned int cmd,
 			}
 
 			import_buffer_handle[i] = handle;
+
+			/* build the CCU IOVA mapping (see ccu_ion_map_handle) */
+			if (ccu_ion_map_handle(handle))
+				LOG_ERR("ccu_ion_map_handle failed buf %d\n", i);
 		}
 
 		break;
