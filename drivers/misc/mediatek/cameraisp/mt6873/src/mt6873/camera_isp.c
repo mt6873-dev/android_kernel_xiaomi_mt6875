@@ -656,6 +656,75 @@ static struct ISP_RAW_INT_STATUS g_ISPIntStatus_SMI[ISP_IRQ_TYPE_AMOUNT];
 
 /* ISP_CAM_A_IDX-ISP_CAM_C_IDX, each has 25 CQ thread. */
 static unsigned int g_cqBaseAddr[ISP_CAM_C_IDX-ISP_CAM_A_IDX+1][25] = {{0} };
+
+#ifdef ISP_TEMP_DIAG_AAO_RAW3
+static unsigned int aao3s_reg, aao3s_fh, aao3s_cnt;
+static unsigned int aao3s_cq[25];
+
+static void aao3_diag_work_fn(struct work_struct *work)
+{
+	unsigned long pa, va;
+	unsigned int *p;
+	int t, k;
+
+	if (aao3s_cnt >= 8)
+		return;
+
+	for (t = 0; t < 2; t++) {
+		unsigned int iova = t ? aao3s_fh : aao3s_reg;
+
+		pa = pseudo_m4u_iova_to_pa(iova);
+		if (!pa) {
+			pr_info("[ISP][DIAG AAO3T] FAIL cnt=%d src=%d iova=0x%x\n",
+				aao3s_cnt, t, iova);
+			continue;
+		}
+		va = (unsigned long)__va(pa & ~0xfffUL);
+		__inval_dcache_area((void *)va, 0x1000);
+		p = (unsigned int *)(va + (pa & 0xfffU));
+		for (k = 0; k < 8; k++)
+			pr_info("[ISP][DIAG AAO3T] cnt=%d src=%d iova=0x%x pa=0x%lx dw%d=%08x\n",
+				aao3s_cnt, t, iova, pa, k, p[k]);
+	}
+
+	for (t = 0; t < 25; t++) {
+		unsigned int iova = aao3s_cq[t];
+
+		if (!iova)
+			continue;
+		pa = pseudo_m4u_iova_to_pa(iova);
+		if (!pa) {
+			if (aao3s_cnt < 4)
+				pr_info("[ISP][DIAG CQTBL3] FAIL cnt=%d thr=%d iova=0x%x\n",
+					aao3s_cnt, t, iova);
+			continue;
+		}
+		if (aao3s_cnt >= 4)
+			continue;
+		va = (unsigned long)__va(pa & ~0xfffUL);
+		__inval_dcache_area((void *)va, 0x1000);
+		p = (unsigned int *)(va + (pa & 0xfffU));
+		pr_info("[ISP][DIAG CQTBL3] cnt=%d thr=%d iova=0x%x pa=0x%lx\n",
+			aao3s_cnt, t, iova, pa);
+		for (k = 0; k + 1 < 64; k += 2) {
+			unsigned int hi = p[k + 1];
+			unsigned int lo = p[k];
+			unsigned int code = hi >> 24;
+			int wr = (code == 0x04 || code == 0x90 ||
+				  code == 0x91);
+
+			if (k < 8 || wr)
+				pr_info("[ISP][DIAG CQTBL3] cnt=%d thr=%d k=%d code=0x%x arga=0x%x val=0x%x%s\n",
+					aao3s_cnt, t, k / 2, code,
+					hi & 0xffffffU, lo,
+					(wr && ((hi & 0xffffU) == 0x44a0)) ?
+					" <=AAO" : "");
+		}
+	}
+}
+
+static DECLARE_WORK(aao3_diag_work, aao3_diag_work_fn);
+#endif
 #if Lafi_WAM_CQ_ERR
 static unsigned int g_cqDoneStatus[ISP_CAM_C_IDX-ISP_CAM_A_IDX+1] = {0};
 static union FBC_CTRL_2 g_fbc_ctrl2[ISP_CAM_C_IDX-ISP_CAM_A_IDX+1][_cam_max_];
@@ -11785,74 +11854,6 @@ LB_CAM_SOF_IGNORE:
 					     [ISP_WAITQ_HEAD_IRQ_HW_P1_DONE]);
 	}
 	if (DmaStatus & AAO_DONE_ST) {
-#ifdef ISP_TEMP_DIAG_AAO_RAW3
-static unsigned int aao3s_reg, aao3s_fh, aao3s_cnt;
-static unsigned int aao3s_cq[25];
-
-static void aao3_diag_work_fn(struct work_struct *work)
-{
-	unsigned long pa, va;
-	unsigned int *p;
-	int t, k;
-
-	if (aao3s_cnt >= 8)
-		return;
-
-	for (t = 0; t < 2; t++) {
-		unsigned int iova = t ? aao3s_fh : aao3s_reg;
-
-		pa = pseudo_m4u_iova_to_pa(iova);
-		if (!pa) {
-			pr_info("[ISP][DIAG AAO3T] FAIL cnt=%d src=%d iova=0x%x\n",
-				aao3s_cnt, t, iova);
-			continue;
-		}
-		va = (unsigned long)__va(pa & ~0xfffUL);
-		__inval_dcache_area((void *)va, 0x1000);
-		p = (unsigned int *)(va + (pa & 0xfffU));
-		for (k = 0; k < 8; k++)
-			pr_info("[ISP][DIAG AAO3T] cnt=%d src=%d iova=0x%x pa=0x%lx dw%d=%08x\n",
-				aao3s_cnt, t, iova, pa, k, p[k]);
-	}
-
-	for (t = 0; t < 25; t++) {
-		unsigned int iova = aao3s_cq[t];
-
-		if (!iova)
-			continue;
-		pa = pseudo_m4u_iova_to_pa(iova);
-		if (!pa) {
-			if (aao3s_cnt < 4)
-				pr_info("[ISP][DIAG CQTBL3] FAIL cnt=%d thr=%d iova=0x%x\n",
-					aao3s_cnt, t, iova);
-			continue;
-		}
-		if (aao3s_cnt >= 4)
-			continue;
-		va = (unsigned long)__va(pa & ~0xfffUL);
-		__inval_dcache_area((void *)va, 0x1000);
-		p = (unsigned int *)(va + (pa & 0xfffU));
-		pr_info("[ISP][DIAG CQTBL3] cnt=%d thr=%d iova=0x%x pa=0x%lx\n",
-			aao3s_cnt, t, iova, pa);
-		for (k = 0; k + 1 < 64; k += 2) {
-			unsigned int hi = p[k + 1];
-			unsigned int lo = p[k];
-			unsigned int code = hi >> 24;
-			int wr = (code == 0x04 || code == 0x90 ||
-				  code == 0x91);
-
-			if (k < 8 || wr)
-				pr_info("[ISP][DIAG CQTBL3] cnt=%d thr=%d k=%d code=0x%x arga=0x%x val=0x%x%s\n",
-					aao3s_cnt, t, k / 2, code,
-					hi & 0xffffffU, lo,
-					(wr && ((hi & 0xffffU) == 0x44a0)) ?
-					" <=AAO" : "");
-		}
-	}
-}
-
-static DECLARE_WORK(aao3_diag_work, aao3_diag_work_fn);
-#endif
 
 
 #ifdef ISP_TEMP_DIAG_AAO_RAW3
