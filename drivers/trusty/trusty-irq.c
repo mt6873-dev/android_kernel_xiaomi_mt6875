@@ -399,9 +399,13 @@ static int trusty_irq_init_normal_irq(struct trusty_irq_state *is, int tirq)
 	 * same GIC line). Without SHARED here the vdec request of that line
 	 * fails the genirq flags check and the CORE interrupt is never
 	 * delivered.
+	 * Flags exactly match stock trusty_irq_init_one request_threaded_irq
+	 * (0x10180 = IRQF_NO_THREAD|IRQF_PROBE_SHARED|IRQF_SHARED) so the
+	 * genirq share check passes - a mismatch here was ret=-EBUSY on the
+	 * vdec CORE request.
 	 */
 	ret = request_irq(irq, trusty_irq_handler,
-			  IRQF_NO_THREAD | IRQF_SHARED,
+			  IRQF_NO_THREAD | IRQF_PROBE_SHARED | IRQF_SHARED,
 			  "trusty", trusty_irq);
 	if (ret) {
 		dev_err(is->dev, "request_irq failed %d\n", ret);
