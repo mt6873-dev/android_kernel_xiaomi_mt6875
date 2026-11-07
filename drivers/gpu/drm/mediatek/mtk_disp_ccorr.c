@@ -24,6 +24,7 @@
 #include "mtk_drm_crtc.h"
 #include "mtk_drm_ddp_comp.h"
 #include "mtk_drm_drv.h"
+#include "mtk_drm_helper.h"
 #include "mtk_disp_ccorr.h"
 #include "mtk_disp_color.h"
 #include "mtk_log.h"
@@ -199,6 +200,26 @@ static void disp_ccorr_multiply_3x3(unsigned int ccorrCoef[3][3],
 			resultCoef[i][1],
 			resultCoef[i][2]);
 	}
+}
+
+/* 官核 vmlinux_official.elf @ 0xffffff800881d00c..0xffffff800881d02c：
+ *   ldr  x8, [x20, #40]
+ *   adrp x1, 0xffffff8009840000 ; add x1, x1, #0x57e
+ *   mov  w2, #0x1
+ *   ldr  x0, [x8, #2360]                  ; private->helper_opt
+ *   bl   mtk_drm_helper_set_opt_by_name
+ * 0xffffff800984057e 处的字符串实测为 "MTK_DRM_OPT_PQ_34_COLOR_MATRIX"。
+ * 官核 DT 没有这一项，init 匹配失败会写 0，故必须靠这里运行时强制置 1。 */
+static int disp_ccorr_color_matrix_to_dispsys(struct drm_device *dev)
+{
+	int ret = 0;
+	struct mtk_drm_private *private = dev->dev_private;
+
+	// All Support 3*4 matrix on drm architecture
+	ret = mtk_drm_helper_set_opt_by_name(private->helper_opt,
+		"MTK_DRM_OPT_PQ_34_COLOR_MATRIX", 1);
+
+	return ret;
 }
 
 static int disp_ccorr_write_coef_reg(struct mtk_ddp_comp *comp,
@@ -1084,6 +1105,18 @@ static int mtk_disp_ccorr_bind(struct device *dev, struct device *master,
 			dev->of_node->full_name, ret);
 		return ret;
 	}
+
+	/* 官核同款（vmlinux_official.elf @ 0xffffff800881d028）：
+	 * mtk_disp_ccorr_bind() 末尾调用
+	 *   mtk_drm_helper_set_opt_by_name(helper_opt,
+	 *       "MTK_DRM_OPT_PQ_34_COLOR_MATRIX", 1);
+	 * 官核 DT 的 helper-name 里并没有这一项（运行时 /proc/device-tree 实测
+	 * 只有 39 项，末项 SF_PF），而 mtk_drm_helper_init() 匹配失败时会把
+	 * value 硬写成 0 —— 所以官核 [42]=1 完全是靠这里运行时强制置 1 得到的。
+	 * 本树原先缺这一步，[42] 恒为 0，导致
+	 * DRM_DISP_FEATURE_PQ_34_COLOR_MATRIX(0x100) 不上报，
+	 * HAL 认为内核不支持 3x4 色彩矩阵，不下发颜色变换 → 画面偏黄。 */
+	disp_ccorr_color_matrix_to_dispsys(drm_dev);
 
 	return 0;
 }
