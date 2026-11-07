@@ -278,6 +278,11 @@ irqreturn_t mtk_vcodec_enc_irq_handler(int irq, void *priv)
 EXPORT_SYMBOL(mtk_vcodec_enc_irq_handler);
 
 
+/* TEMP DIAG: saved request_irq results, printed again at v4l2 open */
+#ifdef VDEC_IRQ_DIAG
+int vdec_irq_req_ret[MTK_VDEC_HW_NUM];
+#endif
+
 int mtk_vcodec_dec_irq_setup(struct platform_device *pdev,
 	struct mtk_vcodec_dev *dev)
 {
@@ -297,6 +302,9 @@ int mtk_vcodec_dec_irq_setup(struct platform_device *pdev,
 				dev->dec_irq[i],
 				mtk_vcodec_lat_dec_irq_handler, NULL, 0,
 				pdev->name, dev);
+#ifdef VDEC_IRQ_DIAG
+		vdec_irq_req_ret[i] = ret;
+#endif
 		if (ret) {
 #ifdef VDEC_IRQ_DIAG
 			pr_info("[VDEC][DIAG IRQ] req i=%d irq=%d ret=%d FAIL\n",
