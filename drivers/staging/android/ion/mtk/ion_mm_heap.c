@@ -891,6 +891,20 @@ static int ion_mm_heap_phys(struct ion_heap *heap, struct ion_buffer *buffer,
 		}
 	}
 
+	/* A reserve-range IOVA (e.g. CCU's, where the hardware
+	 * addresses da+remap) is allocated in config_buffer and lands in
+	 * MVA[domain_idx] before this point.  The MVA==0 condition below
+	 * would then skip m4u_alloc_mva_sg() entirely, leaving the IOVA
+	 * registered but never mapped - the CCU write-faulted at
+	 * da+0x33800000 with pa=0x0 because of this.  Map such an
+	 * already-assigned IOVA in fixed mode so the PTE exists.
+	 */
+	if (buffer_info->MVA[domain_idx] != 0 && port_info.flags == 0 &&
+	    buffer_info->FIXED_MVA[domain_idx] == 0) {
+		port_info.flags |= M4U_FLAGS_FIX_MVA;
+		port_info.mva = buffer_info->MVA[domain_idx];
+	}
+
 	if ((buffer_info->MVA[domain_idx] == 0 && port_info.flags == 0) ||
 	    (buffer_info->FIXED_MVA[domain_idx] == 0 &&
 	    port_info.flags > 0)) {
