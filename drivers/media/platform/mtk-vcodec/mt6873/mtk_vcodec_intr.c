@@ -302,7 +302,21 @@ int mtk_vcodec_dec_irq_setup(struct platform_device *pdev,
 			 */
 			unsigned long trig =
 				irq_get_trigger_type(dev->dec_irq[i]);
+#ifdef VDEC_IRQ_DIAG
+			{
+				struct irq_desc *d =
+					irq_to_desc(dev->dec_irq[i]);
 
+				pr_info("[VDEC][DIAG IRQ3] irq=%d trig=0x%lx want=0x%lx act=%p actflags=0x%x chip=%s\n",
+					dev->dec_irq[i], trig,
+					IRQF_NO_THREAD | IRQF_PROBE_SHARED |
+					IRQF_SHARED | trig,
+					d ? (void *)d->action : NULL,
+					d && d->action ? d->action->flags : 0,
+					d && d->irq_data.chip ?
+					d->irq_data.chip->name : "?");
+			}
+#endif
 			ret = devm_request_threaded_irq(&pdev->dev,
 				dev->dec_irq[i], mtk_vcodec_dec_irq_handler,
 				NULL, IRQF_NO_THREAD | IRQF_PROBE_SHARED |
