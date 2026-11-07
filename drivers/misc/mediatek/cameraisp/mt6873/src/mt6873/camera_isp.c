@@ -4993,6 +4993,33 @@ static long ISP_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Param)
 			Ret = -EFAULT;
 			break;
 		}
+#ifdef ISP_TEMP_DIAG_AAO_RAW3
+		/* TEMP DIAG: dump the full payload the A12 HAL passes for
+		 * 0xC0086B2C (44B per stock vs 24B parsed here) to see what
+		 * lands in g_cqBaseAddr[] and whether it is garbage.
+		 */
+		{
+			static int cq0_cnt;
+
+			if (cq0_cnt < 16) {
+				unsigned int raw11[11];
+				int r;
+
+				if (!copy_from_user(&raw11, (void *)Param,
+						    sizeof(raw11))) {
+					for (r = 0; r < 11; r++)
+						pr_info("[ISP][DIAG CQ0] cnt=%d raw[%d]=0x%x\n",
+							cq0_cnt, r, raw11[r]);
+				}
+				pr_info("[ISP][DIAG CQ0] cnt=%d A=[0x%x,0x%x] B=[0x%x,0x%x] C=[0x%x,0x%x]\n",
+					cq0_cnt, cq0_data[CAM_A][0],
+					cq0_data[CAM_A][1], cq0_data[CAM_B][0],
+					cq0_data[CAM_B][1], cq0_data[CAM_C][0],
+					cq0_data[CAM_C][1]);
+				cq0_cnt++;
+			}
+		}
+#endif
 		index = cq0_data[CAM_A][0] - ISP_CAM_A_IDX;
 		if (index <= (ISP_CAM_C_IDX - ISP_CAM_A_IDX)) {
 			if (cq0_data[CAM_A][1] != 0) {
