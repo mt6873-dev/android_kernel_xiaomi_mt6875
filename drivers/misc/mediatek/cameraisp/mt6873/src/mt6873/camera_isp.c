@@ -736,7 +736,7 @@ static void aao3_cq_work_fn(struct work_struct *work)
 			if (hit)
 				pr_info("[ISP][DIAG CQTBL3] seq=%d thr=%d k=%d w0=%08x w1=%08x <=AAO_REG\n",
 					aao3s_cq_seq, t, k / 2, w0, w1);
-			else if (aao3s_cq_seq < 1)
+			else if (aao3s_cq_seq <= 2)
 				pr_info("[ISP][DIAG CQTBL3] seq=%d thr=%d k=%d w0=%08x w1=%08x\n",
 					aao3s_cq_seq, t, k / 2, w0, w1);
 		}
