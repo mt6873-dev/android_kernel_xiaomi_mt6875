@@ -3044,6 +3044,24 @@ static int ISP_WriteRegToHw(struct ISP_REG_STRUCT *pReg, unsigned int Count)
 				(unsigned int)(pReg[i].Val));
 
 		if (((regBase + pReg[i].Addr) < (regBase + ispRange))) {
+#ifdef ISP_TEMP_DIAG_AAO_RAW3
+			/* TEMP DIAG: log HAL writes into the AAO register window
+			 * (AAO_BASE_ADDR 0x44A0 .. AAHO_CON3 0x4450/0x44FF) so the
+			 * A12 HAL's AAO format programming can be compared with
+			 * what the hardware actually runs with.
+			 */
+			if (pReg[i].Addr >= 0x4438 && pReg[i].Addr <= 0x44ff) {
+				static int aao3_wr_cnt;
+
+				if (aao3_wr_cnt < 48) {
+					pr_info("[ISP][DIAG AAO3WR] mdl=%d addr=0x%lx val=0x%x\n",
+						pReg->module,
+						(unsigned long)pReg[i].Addr,
+						(unsigned int)pReg[i].Val);
+					aao3_wr_cnt++;
+				}
+			}
+#endif
 			ISP_WR32(regBase + pReg[i].Addr, pReg[i].Val);
 		} else {
 			LOG_NOTICE("wrong address(0x%lx)\n",
@@ -11724,11 +11742,20 @@ LB_CAM_SOF_IGNORE:
 				ISP_RD32(CAM_REG_AAO_FH_BASE_ADDR(reg_module));
 			unsigned int aao3_err =
 				ISP_RD32(CAM_REG_AAO_ERR_STAT(reg_module));
+			unsigned int aao3_con =
+				ISP_RD32(CAM_REG_AAO_CON(reg_module));
+			unsigned int aao3_con2 =
+				ISP_RD32(CAM_REG_AAO_CON2(reg_module));
+			unsigned int aao3_con3 =
+				ISP_RD32(CAM_REG_AAO_CON3(reg_module));
+			unsigned int aao3_drs =
+				ISP_RD32(CAM_REG_AAO_DRS(reg_module));
 
 			if (aao3_cnt < 16 || (aao3_cnt % 200) == 0)
-				pr_info("[ISP][DIAG AAO3] cnt=%d mdl=%u rmdl=%u reg=0x%x fh=0x%x err=0x%x\n",
+				pr_info("[ISP][DIAG AAO3] cnt=%d mdl=%u rmdl=%u reg=0x%x fh=0x%x err=0x%x con=0x%x con2=0x%x con3=0x%x drs=0x%x\n",
 					aao3_cnt, module, reg_module,
-					aao3_reg, aao3_fh, aao3_err);
+					aao3_reg, aao3_fh, aao3_err,
+					aao3_con, aao3_con2, aao3_con3, aao3_drs);
 			aao3_cnt++;
 		}
 #endif
