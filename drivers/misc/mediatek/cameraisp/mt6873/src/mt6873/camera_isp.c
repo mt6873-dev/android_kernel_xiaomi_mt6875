@@ -5122,6 +5122,30 @@ static long ISP_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Param)
 					 */
 					ptbl->pIonCt[jump + i]++;
 
+#ifdef ISP_TEMP_DIAG_AAO_RAW3
+					{
+						/* TEMP DIAG: log the buffer PA
+						 * so it can be compared with
+						 * the AAO_BASE_ADDR IOVA that
+						 * shows up in the AAO3 dump.
+						 */
+						static int aao3_imp_cnt;
+						ion_phys_addr_t aao3_pa = 0;
+						size_t aao3_len = 0;
+
+						if (aao3_imp_cnt < 32 &&
+						    !ion_phys(pIon_client, handle,
+							      &aao3_pa, &aao3_len))
+							pr_info("[ISP][DIAG AAO3IMP] dev=%d dma=%d fd=%d pa=0x%llx len=0x%zx\n",
+								IonNode.devNode,
+								IonNode.dmaPort,
+								IonNode.memID,
+								(unsigned long long)aao3_pa,
+								aao3_len);
+						aao3_imp_cnt++;
+					}
+#endif
+
 					if (IspInfo.DebugMask &
 					    ISP_DBG_ION_CTRL) {
 						LOG_INF(
