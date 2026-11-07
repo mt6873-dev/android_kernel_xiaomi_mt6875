@@ -38,14 +38,6 @@
 #include <linux/sched/clock.h>
 #include <linux/slab.h>
 
-/* TEMP DIAG round 3 (revert after logs): AAO per-frame address/state dump.
- * Dump analysis shows 50% of frames have the first 24 blocks (18432B) of
- * the AAO buffer sparse while the rest is fine (dual-buffer parity), so
- * dump the runtime AAO_BASE_ADDR / AAO_FH_BASE_ADDR / AAO_ERR_STAT on
- * every AAO_DONE to see whether the programmed addresses alternate.
- * Grep for [ISP][DIAG AAO3].
- */
-#define ISP_TEMP_DIAG_AAO_RAW3 1
 extern unsigned long pseudo_m4u_iova_to_pa(unsigned long iova);
 extern unsigned int pseudo_m4u_mva_count(void);
 extern void mtk_iommu_dump_iova_space(unsigned long target);
@@ -659,92 +651,6 @@ static struct ISP_RAW_INT_STATUS g_ISPIntStatus_SMI[ISP_IRQ_TYPE_AMOUNT];
 /* ISP_CAM_A_IDX-ISP_CAM_C_IDX, each has 25 CQ thread. */
 static unsigned int g_cqBaseAddr[ISP_CAM_C_IDX-ISP_CAM_A_IDX+1][25] = {{0} };
 
-#ifdef ISP_TEMP_DIAG_AAO_RAW3
-static unsigned int aao3s_reg, aao3s_fh, aao3s_cnt;
-static unsigned int aao3s_cq[25];
-
-static void aao3_diag_work_fn(struct work_struct *work)
-{
-	unsigned long pa, va;
-	unsigned int *p;
-	int t, k;
-
-	if (aao3s_cnt >= 8)
-		return;
-
-	for (t = 0; t < 2; t++) {
-		unsigned int iova = t ? aao3s_fh : aao3s_reg;
-
-		pa = pseudo_m4u_iova_to_pa(iova);
-		if (!pa) {
-			pr_info("[ISP][DIAG AAO3T] FAIL cnt=%d src=%d iova=0x%x mvaN=%u\n",
-				aao3s_cnt, t, iova, pseudo_m4u_mva_count());
-			mtk_iommu_dump_iova_space(iova);
-			continue;
-		}
-		va = (unsigned long)__va(pa & ~0xfffUL);
-		__inval_dcache_area((void *)va, 0x1000);
-		p = (unsigned int *)(va + (pa & 0xfffU));
-		for (k = 0; k < 32; k++)
-			pr_info("[ISP][DIAG AAO3T] cnt=%d src=%d iova=0x%x pa=0x%lx dw%d=%08x\n",
-				aao3s_cnt, t, iova, pa, k, p[k]);
-	}
-
-}
-
-static DECLARE_WORK(aao3_diag_work, aao3_diag_work_fn);
-
-/* CQ table dump at SOF: the table is filled before the frame and
- * consumed by the HW during it, so AAO_DONE is too late (round-13
- * only saw the post-consumption residue). */
-static unsigned int aao3s_cq[25];
-static unsigned int aao3s_cq_seq;
-
-static void aao3_cq_work_fn(struct work_struct *work)
-{
-	unsigned long pa, va;
-	unsigned int *p;
-	int t, k;
-
-	if (aao3s_cq_seq >= 3)
-		return;
-
-	for (t = 0; t < 25; t++) {
-		unsigned int iova = aao3s_cq[t];
-
-		if (!iova)
-			continue;
-		pa = pseudo_m4u_iova_to_pa(iova);
-		if (!pa) {
-			pr_info("[ISP][DIAG CQTBL3] FAIL seq=%d thr=%d iova=0x%x mvaN=%u\n",
-				aao3s_cq_seq, t, iova,
-				pseudo_m4u_mva_count());
-			mtk_iommu_dump_iova_space(iova);
-			continue;
-		}
-		va = (unsigned long)__va(pa & ~0xfffUL);
-		__inval_dcache_area((void *)va, 0x1000);
-		p = (unsigned int *)(va + (pa & 0xfffU));
-		pr_info("[ISP][DIAG CQTBL3] seq=%d thr=%d iova=0x%x pa=0x%lx\n",
-			aao3s_cq_seq, t, iova, pa);
-		for (k = 0; k + 1 < 64; k += 2) {
-			unsigned int w0 = p[k];
-			unsigned int w1 = p[k + 1];
-			int hit = ((w0 & 0xffffU) == 0x44a0) ||
-				  ((w1 & 0xffffU) == 0x44a0);
-
-			if (hit)
-				pr_info("[ISP][DIAG CQTBL3] seq=%d thr=%d k=%d w0=%08x w1=%08x <=AAO_REG\n",
-					aao3s_cq_seq, t, k / 2, w0, w1);
-			else if (aao3s_cq_seq <= 2)
-				pr_info("[ISP][DIAG CQTBL3] seq=%d thr=%d k=%d w0=%08x w1=%08x\n",
-					aao3s_cq_seq, t, k / 2, w0, w1);
-		}
-	}
-}
-
-static DECLARE_WORK(aao3_cq_work, aao3_cq_work_fn);
-#endif
 #if Lafi_WAM_CQ_ERR
 static unsigned int g_cqDoneStatus[ISP_CAM_C_IDX-ISP_CAM_A_IDX+1] = {0};
 static union FBC_CTRL_2 g_fbc_ctrl2[ISP_CAM_C_IDX-ISP_CAM_A_IDX+1][_cam_max_];
@@ -3134,24 +3040,6 @@ static int ISP_WriteRegToHw(struct ISP_REG_STRUCT *pReg, unsigned int Count)
 				(unsigned int)(pReg[i].Val));
 
 		if (((regBase + pReg[i].Addr) < (regBase + ispRange))) {
-#ifdef ISP_TEMP_DIAG_AAO_RAW3
-			/* TEMP DIAG: log all HAL register writes (rate limited)
-			 * so the stat format/precision register - the one that
-			 * controls the 0x40000000 flag and the 32-bit layout of
-			 * AAO values - can be found by comparing with stock.
-			 */
-			{
-				static int aao3_wr_cnt;
-
-				if (aao3_wr_cnt < 256) {
-					pr_info("[ISP][DIAG AAO3WR] mdl=%d addr=0x%lx val=0x%x\n",
-						pReg->module,
-						(unsigned long)pReg[i].Addr,
-						(unsigned int)pReg[i].Val);
-					aao3_wr_cnt++;
-				}
-			}
-#endif
 			ISP_WR32(regBase + pReg[i].Addr, pReg[i].Val);
 		} else {
 			LOG_NOTICE("wrong address(0x%lx)\n",
@@ -5083,33 +4971,6 @@ static long ISP_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Param)
 			Ret = -EFAULT;
 			break;
 		}
-#ifdef ISP_TEMP_DIAG_AAO_RAW3
-		/* TEMP DIAG: dump the full payload the A12 HAL passes for
-		 * 0xC0086B2C (44B per stock vs 24B parsed here) to see what
-		 * lands in g_cqBaseAddr[] and whether it is garbage.
-		 */
-		{
-			static int cq0_cnt;
-
-			if (cq0_cnt < 16) {
-				unsigned int raw11[11];
-				int r;
-
-				if (!copy_from_user(&raw11, (void *)Param,
-						    sizeof(raw11))) {
-					for (r = 0; r < 11; r++)
-						pr_info("[ISP][DIAG CQ0] cnt=%d raw[%d]=0x%x\n",
-							cq0_cnt, r, raw11[r]);
-				}
-				pr_info("[ISP][DIAG CQ0] cnt=%d A=[0x%x,0x%x] B=[0x%x,0x%x] C=[0x%x,0x%x]\n",
-					cq0_cnt, cq0_data[CAM_A][0],
-					cq0_data[CAM_A][1], cq0_data[CAM_B][0],
-					cq0_data[CAM_B][1], cq0_data[CAM_C][0],
-					cq0_data[CAM_C][1]);
-				cq0_cnt++;
-			}
-		}
-#endif
 		index = cq0_data[CAM_A][0] - ISP_CAM_A_IDX;
 		if (index <= (ISP_CAM_C_IDX - ISP_CAM_A_IDX)) {
 			if (cq0_data[CAM_A][1] != 0) {
@@ -5239,29 +5100,6 @@ static long ISP_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Param)
 					 */
 					ptbl->pIonCt[jump + i]++;
 
-#ifdef ISP_TEMP_DIAG_AAO_RAW3
-					{
-						/* TEMP DIAG: log the buffer PA
-						 * so it can be compared with
-						 * the AAO_BASE_ADDR IOVA that
-						 * shows up in the AAO3 dump.
-						 */
-						static int aao3_imp_cnt;
-						ion_phys_addr_t aao3_pa = 0;
-						size_t aao3_len = 0;
-
-						if (aao3_imp_cnt < 32 &&
-						    !ion_phys(pIon_client, handle,
-							      &aao3_pa, &aao3_len))
-							pr_info("[ISP][DIAG AAO3IMP] dev=%d dma=%d fd=%d pa=0x%llx len=0x%zx\n",
-								IonNode.devNode,
-								IonNode.dmaPort,
-								IonNode.memID,
-								(unsigned long long)aao3_pa,
-								aao3_len);
-						aao3_imp_cnt++;
-					}
-#endif
 
 					if (IspInfo.DebugMask &
 					    ISP_DBG_ION_CTRL) {
@@ -11858,24 +11696,6 @@ LB_CAM_SOF_IGNORE:
 	}
 	spin_unlock(&(IspInfo.SpinLockIrq[module]));
 	/*  */
-#ifdef ISP_TEMP_DIAG_AAO_RAW3
-	if (IrqStatus & SOF_INT_ST) {
-		int aao3_cq_i;
-
-		/* Read the live CQ_THRx_BASEADDR hardware registers
-		 * (0x214 + thr*0xC) instead of g_cqBaseAddr: entry [0] of
-		 * that array is the garbage 0xC0086B2C payload and [1..24]
-		 * are only filled under Lafi_WAM_CQ_ERR (=0), so the array
-		 * never held the real table base addresses.
-		 */
-		for (aao3_cq_i = 0; aao3_cq_i < 25; aao3_cq_i++)
-			aao3s_cq[aao3_cq_i] = ISP_RD32(
-				(void __iomem *)((char *)isp_devs[reg_module].regs
-				+ 0x214 + aao3_cq_i * 0xc));
-		aao3s_cq_seq++;
-		schedule_work(&aao3_cq_work);
-	}
-#endif
 	if (IrqStatus & SOF_INT_ST) {
 		wake_up_interruptible(
 			&IspInfo.WaitQHeadCam[ISP_GetWaitQCamIndex(module)]
@@ -11894,93 +11714,6 @@ LB_CAM_SOF_IGNORE:
 	if (DmaStatus & AAO_DONE_ST) {
 
 
-#ifdef ISP_TEMP_DIAG_AAO_RAW3
-		{
-			static int aao3_cnt;
-			unsigned int aao3_reg =
-				ISP_RD32(CAM_REG_AAO_BASE_ADDR(reg_module));
-			unsigned int aao3_fh =
-				ISP_RD32(CAM_REG_AAO_FH_BASE_ADDR(reg_module));
-			unsigned int aao3_err =
-				ISP_RD32(CAM_REG_AAO_ERR_STAT(reg_module));
-			unsigned int aao3_con =
-				ISP_RD32(CAM_REG_AAO_CON(reg_module));
-			unsigned int aao3_con2 =
-				ISP_RD32(CAM_REG_AAO_CON2(reg_module));
-			unsigned int aao3_con3 =
-				ISP_RD32(CAM_REG_AAO_CON3(reg_module));
-			unsigned int aao3_drs =
-				ISP_RD32(CAM_REG_AAO_DRS(reg_module));
-
-			if (aao3_cnt < 16 || (aao3_cnt % 200) == 0)
-				pr_info("[ISP][DIAG AAO3] cnt=%d mdl=%u rmdl=%u reg=0x%x fh=0x%x err=0x%x con=0x%x con2=0x%x con3=0x%x drs=0x%x\n",
-					aao3_cnt, module, reg_module,
-					aao3_reg, aao3_fh, aao3_err,
-					aao3_con, aao3_con2, aao3_con3, aao3_drs);
-
-			/* Dump what the DMA actually wrote: the frame-header
-			 * buffer (fh, +28B mystery) and the head of the stat
-			 * buffer, right at AAO_DONE time. DRAM PA guard first
-			 * so a stale register value cannot fault the ISR.
-			 */
-			if (aao3_cnt < 8) {
-				unsigned long aao3_pa;
-				void *aao3_va;
-				unsigned int *aao3_p;
-				int aao3_k;
-
-				aao3_pa = aao3_fh & 0xfffff000U;
-				if (aao3_pa >= 0x40000000UL &&
-				    aao3_pa < 0x140000000UL) {
-					aao3_va = __va(aao3_pa);
-					__inval_dcache_area(aao3_va, 28);
-					aao3_p = (unsigned int *)((char *)aao3_va +
-							 (aao3_fh & 0xfffU));
-					pr_info("[ISP][DIAG AAO3FH] cnt=%d fh=0x%x w0=%08x w1=%08x w2=%08x w3=%08x w4=%08x w5=%08x w6=%08x\n",
-						aao3_cnt, aao3_fh,
-						aao3_p[0], aao3_p[1], aao3_p[2],
-						aao3_p[3], aao3_p[4], aao3_p[5],
-						aao3_p[6]);
-				} else {
-					pr_info("[ISP][DIAG AAO3FH] cnt=%d fh=0x%x PA_OOR\n",
-						aao3_cnt, aao3_fh);
-				}
-
-				aao3_pa = aao3_reg & 0xfffff000U;
-				if (aao3_pa >= 0x40000000UL &&
-				    aao3_pa < 0x140000000UL) {
-					aao3_va = __va(aao3_pa);
-					__inval_dcache_area(aao3_va, 64);
-					aao3_p = (unsigned int *)((char *)aao3_va +
-							 (aao3_reg & 0xfffU));
-					for (aao3_k = 0; aao3_k < 8; aao3_k++) {
-						pr_info("[ISP][DIAG AAO3DAT] cnt=%d reg=0x%x dw%d=%08x\n",
-							aao3_cnt, aao3_reg,
-							aao3_k, aao3_p[aao3_k]);
-					}
-				} else {
-					pr_info("[ISP][DIAG AAO3DAT] cnt=%d reg=0x%x PA_OOR\n",
-						aao3_cnt, aao3_reg);
-				}
-
-
-			}
-			/* TEMP DIAG round12: snapshot regs and CQ table
-			 * IOVAs, translate them in a workqueue - the
-			 * pseudo_m4u registry walk takes a mutex which the
-			 * ISR cannot hold (round-11's iommu-domain walk
-			 * failed: the isp dev has no domain).
-			 */
-			{
-				aao3s_reg = aao3_reg;
-				aao3s_fh = aao3_fh;
-				aao3s_cnt = aao3_cnt;
-				schedule_work(&aao3_diag_work);
-			}
-
-			aao3_cnt++;
-		}
-#endif
 		wake_up_interruptible(
 			&IspInfo.WaitQHeadCam[ISP_GetWaitQCamIndex(module)]
 					     [ISP_WAITQ_HEAD_IRQ_AAO_DONE]);
