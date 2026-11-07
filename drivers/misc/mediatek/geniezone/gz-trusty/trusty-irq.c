@@ -400,7 +400,18 @@ static int trusty_irq_init_normal_irq(struct trusty_irq_state *is, int tirq)
 	dev_dbg(is->dev, "%s: tirq=%d, virq=%d\n", __func__, tirq, irq);
 #endif
 
-	ret = request_irq(irq, trusty_irq_handler, IRQF_NO_THREAD,
+	/* Flags exactly match the stock kernel's request_irq here
+	 * (vmlinux_official.elf 0xffffff80089cfd58: mov w3,#0x180;
+	 * movk w3,#0x1,lsl#16 => 0x10180 = IRQF_NO_THREAD|
+	 * IRQF_PROBE_SHARED|IRQF_SHARED). IRQ 341 is shared with
+	 * mtk-vcodec-dec CORE; without IRQF_SHARED the vdec request
+	 * hits genirq's mismatch path and fails -EBUSY silently
+	 * (mismatch printk is skipped when the requester carries
+	 * IRQF_PROBE_SHARED), leaving the decoder on the slow LAT
+	 * path (500ms/frame).
+	 */
+	ret = request_irq(irq, trusty_irq_handler,
+			  IRQF_NO_THREAD | IRQF_PROBE_SHARED | IRQF_SHARED,
 			  "trusty", trusty_irq);
 	if (ret) {
 		dev_info(is->dev, "request_irq failed %d\n", ret);
