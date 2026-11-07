@@ -42,6 +42,12 @@
 #define ENABLE_PDAF 1
 #define EEPROM_SLAVE_ID 0xA4
 
+/* TEMP DIAG: log every AE set_shutter so the exposure the HAL asks for
+ * can be compared with the frame length/shutter actually programmed.
+ * Revert after collecting logs.
+ */
+#define ISP_TEMP_DIAG_SENSOR 1
+
 static DEFINE_SPINLOCK(imgsensor_drv_lock);
 
 static struct imgsensor_info_struct imgsensor_info = {
@@ -424,6 +430,17 @@ static void set_shutter(kal_uint32 shutter)
 
 
 	imgsensor.current_ae_effective_frame = 2;
+
+#ifdef ISP_TEMP_DIAG_SENSOR
+	pr_info("[ISP][DIAG SENSOR] set_shutter hal_in=%u eff_shutter=%u fl=%u min_fl=%u margin=%u max_fl=%u pclk=%u ll=%u exp_us=%u\n",
+		imgsensor.shutter, shutter, imgsensor.frame_length,
+		imgsensor.min_frame_length, imgsensor_info.margin,
+		imgsensor_info.max_frame_length, imgsensor.pclk,
+		imgsensor.line_length,
+		(unsigned int)((unsigned long long)shutter *
+			       imgsensor.line_length * 1000000ULL /
+			       (imgsensor.pclk ? imgsensor.pclk : 1)));
+#endif
 
 	LOG_INF("Exit! shutter =%d, framelength =%d\n", shutter, imgsensor.frame_length);
 }
