@@ -394,7 +394,14 @@ static int trusty_irq_init_normal_irq(struct trusty_irq_state *is, int tirq)
 	hlist_add_head(&trusty_irq->node, &is->normal_irqs.inactive);
 	spin_unlock_irqrestore(&is->normal_irqs_lock, irq_flags);
 
-	ret = request_irq(irq, trusty_irq_handler, IRQF_NO_THREAD,
+	/* IRQF_SHARED: stock A12 shares the trusty line with the vdec CORE
+	 * irq (see stock /proc/interrupts "trusty, 1602f000.vdec" on the
+	 * same GIC line). Without SHARED here the vdec request of that line
+	 * fails the genirq flags check and the CORE interrupt is never
+	 * delivered.
+	 */
+	ret = request_irq(irq, trusty_irq_handler,
+			  IRQF_NO_THREAD | IRQF_SHARED,
 			  "trusty", trusty_irq);
 	if (ret) {
 		dev_err(is->dev, "request_irq failed %d\n", ret);
