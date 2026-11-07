@@ -11853,39 +11853,46 @@ LB_CAM_SOF_IGNORE:
 						aao3_cnt, aao3_reg);
 				}
 
-				/* TEMP DIAG: dump the CQ table the GCE executes
-				 * (base registered via 0xC0086B2C) to find the
-				 * AAO_BASE_ADDR write instruction and compare
-				 * its value with what the DMA actually targets.
+				/* TEMP DIAG: scan every registered CQ thread
+				 * table for the AAO_BASE_ADDR (0x44A0) write
+				 * instruction and for buffer addresses; print
+				 * only hits to keep the log small.
 				 */
-				aao3_pa = (unsigned long)g_cqBaseAddr[0][0] &
-					0xfffff000U;
-				if (aao3_pa >= 0x40000000UL &&
-				    aao3_pa < 0x140000000UL) {
-					unsigned int aao3_hit = 0;
+				{
+					int cq_t;
 
-					aao3_va = __va(aao3_pa);
-					__inval_dcache_area(aao3_va, 256);
-					aao3_p = (unsigned int *)((char *)aao3_va +
-							 ((unsigned long)g_cqBaseAddr[0][0] & 0xfffU));
-					for (aao3_k = 0; aao3_k < 32; aao3_k++) {
-						/* GCE write insns carry the
-						 * target reg offset in the
-						 * low half; 0x44A0 is AAO_BASE.
-						 */
-						if ((aao3_p[aao3_k] & 0xffff) == 0x44a0 ||
-						    (aao3_p[aao3_k] >> 16 & 0xffff) == 0x44a0)
-							aao3_hit++;
-						pr_info("[ISP][DIAG CQTBL] cnt=%d i=%d v=%08x\n",
-							aao3_cnt, aao3_k,
-							aao3_p[aao3_k]);
+					for (cq_t = 0; cq_t < 25; cq_t++) {
+						unsigned int cq_base =
+							g_cqBaseAddr[0][cq_t];
+
+						aao3_pa = (unsigned long)cq_base &
+							0xfffff000U;
+						if (aao3_pa < 0x40000000UL ||
+						    aao3_pa >= 0x140000000UL)
+							continue;
+						aao3_va = __va(aao3_pa);
+						__inval_dcache_area(aao3_va,
+								    512);
+						aao3_p = (unsigned int *)
+							((char *)aao3_va +
+							 ((unsigned long)cq_base & 0xfffU));
+						for (aao3_k = 0; aao3_k < 64;
+						     aao3_k++) {
+							unsigned int v =
+								aao3_p[aao3_k];
+
+							if ((v & 0xffff) == 0x44a0 ||
+							    ((v >> 16) & 0xffff) == 0x44a0 ||
+							    (v >= 0x40000000 &&
+							     v < 0x140000000 &&
+							     aao3_k > 0)) {
+								pr_info("[ISP][DIAG CQTBL2] cnt=%d thr=%d i=%d v=%08x\n",
+									aao3_cnt,
+									cq_t,
+									aao3_k, v);
+							}
+						}
 					}
-					pr_info("[ISP][DIAG CQTBL] cnt=%d base=0x%x aao_hits=%u\n",
-						aao3_cnt, g_cqBaseAddr[0][0],
-						aao3_hit);
-				} else {
-					pr_info("[ISP][DIAG CQTBL] cnt=%d base=0x%x PA_OOR\n",
-						aao3_cnt, g_cqBaseAddr[0][0]);
 				}
 			}
 			aao3_cnt++;
