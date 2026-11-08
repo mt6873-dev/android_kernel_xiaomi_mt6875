@@ -220,6 +220,23 @@ static int dsp_fast_default_get(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int dsp_fm_default_set(struct snd_kcontrol *kcontrol,
+			      struct snd_ctl_elem_value *ucontrol)
+{
+	int val = ucontrol->value.integer.value[0];
+
+	set_task_attr(AUDIO_TASK_FM_ADSP_ID, ADSP_TASK_ATTR_DEFAULT, val);
+	return 0;
+}
+
+static int dsp_fm_default_get(struct snd_kcontrol *kcontrol,
+			      struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] =
+		get_task_attr(AUDIO_TASK_FM_ADSP_ID, ADSP_TASK_ATTR_DEFAULT);
+	return 0;
+}
+
 static int dsp_ktv_default_set(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol)
 {
@@ -436,6 +453,23 @@ static int dsp_fast_runtime_get(struct snd_kcontrol *kcontrol,
 {
 	ucontrol->value.integer.value[0] =
 		get_task_attr(AUDIO_TASK_FAST_ID, ADSP_TASK_ATTR_RUMTIME);
+	return 0;
+}
+
+static int dsp_fm_runtime_set(struct snd_kcontrol *kcontrol,
+			      struct snd_ctl_elem_value *ucontrol)
+{
+	int val = ucontrol->value.integer.value[0];
+
+	set_task_attr(AUDIO_TASK_FM_ADSP_ID, ADSP_TASK_ATTR_RUMTIME, val);
+	return 0;
+}
+
+static int dsp_fm_runtime_get(struct snd_kcontrol *kcontrol,
+			      struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] =
+		get_task_attr(AUDIO_TASK_FM_ADSP_ID, ADSP_TASK_ATTR_RUMTIME);
 	return 0;
 }
 
@@ -659,6 +693,8 @@ static const struct snd_kcontrol_new dsp_platform_kcontrols[] = {
 		       dsp_call_final_default_get, dsp_call_final_default_set),
 	SOC_SINGLE_EXT("dsp_fast_default_en", SND_SOC_NOPM, 0, 0xff, 0,
 		       dsp_fast_default_get, dsp_fast_default_set),
+	SOC_SINGLE_EXT("dsp_fm_default_en", SND_SOC_NOPM, 0, 0x1, 0,
+		       dsp_fm_default_get, dsp_fm_default_set),
 	SOC_SINGLE_EXT("dsp_ktv_default_en", SND_SOC_NOPM, 0, 0x1, 0,
 		       dsp_ktv_default_get, dsp_ktv_default_set),
 	SOC_SINGLE_EXT("dsp_captureraw_default_en", SND_SOC_NOPM, 0, 0x1, 0,
@@ -685,6 +721,8 @@ static const struct snd_kcontrol_new dsp_platform_kcontrols[] = {
 		       dsp_dataprovider_runtime_set),
 	SOC_SINGLE_EXT("dsp_fast_runtime_en", SND_SOC_NOPM, 0, 0x1, 0,
 		       dsp_fast_runtime_get, dsp_fast_runtime_set),
+	SOC_SINGLE_EXT("dsp_fm_runtime_en", SND_SOC_NOPM, 0, 0x1, 0,
+		       dsp_fm_runtime_get, dsp_fm_runtime_set),
 	SOC_SINGLE_EXT("dsp_ktv_runtime_en", SND_SOC_NOPM, 0, 0x1, 0,
 		       dsp_ktv_runtime_get, dsp_ktv_runtime_set),
 	SOC_SINGLE_EXT("dsp_captureraw_runtime_en", SND_SOC_NOPM, 0, 0x1, 0,
