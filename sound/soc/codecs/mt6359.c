@@ -284,6 +284,7 @@ struct mt6359_priv {
 	int reg_afe_vow_vad_cfg5;
 	int reg_afe_vow_periodic;
 	unsigned int vow_channel;
+	int vow_single_mic_select;
 	struct mt6359_vow_periodic_on_off_data vow_periodic_param;
 };
 
@@ -5929,6 +5930,8 @@ static void *get_vow_coeff_by_name(struct mt6359_priv *priv,
 		return &(priv->reg_afe_vow_vad_cfg5);
 	else if (strcmp(name, "Audio_VOW_Periodic") == 0)
 		return &(priv->reg_afe_vow_periodic);
+	else if (strcmp(name, "Audio_Vow_SINGLE_MIC_Select") == 0)
+		return &(priv->vow_single_mic_select);
 	else if (strcmp(name, "Audio_VOW_Periodic_Param") == 0)
 		return (void *)&(priv->vow_periodic_param);
 	else
@@ -6714,6 +6717,20 @@ static int mt6359_rcv_dcc_get(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int dmic_used_get(struct snd_kcontrol *kcontrol,
+			 struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *cmpnt = snd_soc_kcontrol_component(kcontrol);
+	struct mt6359_priv *priv = snd_soc_component_get_drvdata(cmpnt);
+
+	ucontrol->value.integer.value[0] =
+		priv->mux_select[MUX_MIC_TYPE_0] == MIC_TYPE_MUX_DMIC ||
+		priv->mux_select[MUX_MIC_TYPE_1] == MIC_TYPE_MUX_DMIC ||
+		priv->mux_select[MUX_MIC_TYPE_2] == MIC_TYPE_MUX_DMIC;
+
+	return 0;
+}
+
 /* vow control */
 static const struct snd_kcontrol_new mt6359_snd_vow_controls[] = {
 	SOC_SINGLE_EXT("Audio VOWCFG0 Data",
@@ -6737,6 +6754,9 @@ static const struct snd_kcontrol_new mt6359_snd_vow_controls[] = {
 	SOC_SINGLE_EXT("Audio_VOW_Periodic",
 		       SND_SOC_NOPM, 0, 0x80000, 0,
 		       audio_vow_cfg_get, audio_vow_cfg_set),
+	SOC_SINGLE_EXT("Audio_Vow_SINGLE_MIC_Select",
+		       SND_SOC_NOPM, 0, 0x80000, 0,
+		       audio_vow_cfg_get, audio_vow_cfg_set),
 	SND_SOC_BYTES_TLV("Audio_VOW_Periodic_Param",
 			  sizeof(struct mt6359_vow_periodic_on_off_data),
 			  audio_vow_periodic_parm_get,
@@ -6753,6 +6773,8 @@ static const struct snd_kcontrol_new mt6359_snd_misc_controls[] = {
 		     mt6359_codec_debug_get, mt6359_codec_debug_set),
 	SOC_ENUM_EXT("PMIC_REG_CLEAR", rcv_mic_enum[0],
 		     mt6359_rcv_dcc_get, mt6359_rcv_dcc_set),
+	SOC_ENUM_EXT("DMic Used", misc_control_enum[0],
+		     dmic_used_get, NULL),
 };
 
 static int mt6359_codec_init_reg(struct mt6359_priv *priv)
