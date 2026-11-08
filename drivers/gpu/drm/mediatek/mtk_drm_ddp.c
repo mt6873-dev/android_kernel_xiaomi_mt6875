@@ -7362,17 +7362,6 @@ static int mtk_ddp_probe(struct platform_device *pdev)
 	return 0;
 }
 
-/* MTKDBG v162: MUTEX0 EN read for the loop-completion probe - 1 means
- * EN is sticky (a 0 at timeout = enable_cmdq never ran), 0 means the HW
- * clears EN after each SOF (a 0 at timeout is normal). */
-void mtk_mutex_en_dump(unsigned int id)
-{
-	if (g_mtk_ddp && g_mtk_ddp->regs)
-		pr_err("MTKDBG LOOP_DONE MUTEX%d EN=0x%x\n", id,
-		       readl(g_mtk_ddp->regs + DISP_REG_MUTEX_EN(id)));
-}
-EXPORT_SYMBOL(mtk_mutex_en_dump);
-
 static int mtk_ddp_remove(struct platform_device *pdev)
 {
 	pm_runtime_disable(&pdev->dev);

@@ -3412,51 +3412,6 @@ static int mtk_drm_sys_resume(struct device *dev)
 static SIMPLE_DEV_PM_OPS(mtk_drm_pm_ops, mtk_drm_sys_suspend,
 			 mtk_drm_sys_resume);
 
-/* MTKDBG v162: MMSYS DL_VALID/READY + MUTEX EN read at loop completion
- * (rate-limited from trig_done_cb) - DL_VALID_0=0 with READY!=0 means
- * the OVL0->RDMA0 data link never handshakes even though the SOF was
- * produced (MUTEX EN auto-clears), i.e. the stall is in the MMSYS
- * connection, not in the trigger itself. */
-void mtk_drm_mmsys_dump(void)
-{
-	struct mtk_drm_private *private = g_mtk_private;
-
-	if (private && private->config_regs) {
-		pr_err("MTKDBG LOOP_DONE DL_VALID=0x%x,0x%x,0x%x READY=0x%x,0x%x,0x%x\n",
-		       readl(private->config_regs + 0xe9c),
-		       readl(private->config_regs + 0xea0),
-		       readl(private->config_regs + 0xea4),
-		       readl(private->config_regs + 0xea8),
-		       readl(private->config_regs + 0xeac),
-		       readl(private->config_regs + 0xeb0));
-		/* MTKDBG v164: the ACTUAL OVL0->RDMA0 link regs (the earlier
-		 * 0xf10/0xf44 were the wrong ones): MMSYS_OVL_CON(0xf4c)
-		 * selects OVL0's blend-out, TOVL0_OUT1_MOUT_EN(0xf74) bit0
-		 * gates OVL0_VIRTUAL0->RDMA0. 0 here after resume means the
-		 * path was never re-connected -> RDMA0 never sees OVL data. */
-		pr_err("MTKDBG LOOP_DONE OVL_CON=0x%x TOVL0_OUT1=0x%x\n",
-		       readl(private->config_regs + 0xf4c),
-		       readl(private->config_regs + 0xf74));
-	}
-	/* MTKDBG v165: RDMA0 data counters at loop completion - if the
-	 * frame data path is alive these are non-zero (or at least the
-	 * OVL main engine is feeding RDMA0); all-zero on a normally
-	 * completing loop means even "good" loops are empty frames. */
-	{
-		struct mtk_ddp_comp *rdma0 =
-			private->ddp_comp[DDP_COMPONENT_RDMA0];
-
-		if (rdma0 && rdma0->regs)
-			pr_err("MTKDBG LOOP_DONE RDMA0 IN_P=0x%x OUT_P=0x%x\n",
-			       readl(rdma0->regs + 0x120),
-			       readl(rdma0->regs + 0x128));
-	}
-	{
-		extern void mtk_mutex_en_dump(unsigned int id);
-		mtk_mutex_en_dump(0);
-	}
-}
-EXPORT_SYMBOL(mtk_drm_mmsys_dump);
 
 static const struct of_device_id mtk_drm_of_ids[] = {
 	{.compatible = "mediatek,mt2701-mmsys",

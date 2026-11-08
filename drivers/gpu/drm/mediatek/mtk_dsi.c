@@ -1571,8 +1571,6 @@ static irqreturn_t mtk_dsi_irq_status(int irq, void *dev_id)
 	|| defined(CONFIG_MACH_MT6833)
 	static DEFINE_RATELIMIT_STATE(ioctl_ratelimit, 1 * HZ, 20);
 #endif
-	/* MTKDBG: DSI interrupt-storm diagnostic (print only). */
-	static DEFINE_RATELIMIT_STATE(dsi_status_ratelimit, 1 * HZ, 5);
 	bool doze_enabled = 0;
 	unsigned int doze_wait = 0;
 	static unsigned int cnt;
@@ -1596,23 +1594,6 @@ static irqreturn_t mtk_dsi_irq_status(int irq, void *dev_id)
 		DRM_MMP_MARK(dsi1, status, 0);
 
 	DDPIRQ("%s irq, val:0x%x\n", mtk_dump_comp_str(&dsi->ddp_comp), status);
-
-	/* MTKDBG: DSI interrupt-storm diagnostic.
-	 *
-	 * A level-triggered DSI IRQ re-enters forever when the pending bits
-	 * are ones this handler never clears: the mask below drops bit0
-	 * (LPRX_RD_RDY) and bit5, so a status holding only those never
-	 * reaches the writel() and the line stays asserted.  That is what
-	 * shows up as mtk_dsi_irq_status ticking 20k-30k times a second,
-	 * and in turn as "buffer underrun" / "frame underflow" / "hw reset
-	 * done" and the garbled, torn, briefly black panel.
-	 *
-	 * Print the raw and the masked value, rate-limited, so one boot
-	 * tells us which bit is stuck.  Print only, no behaviour change.
-	 */
-	if (__ratelimit(&dsi_status_ratelimit))
-		pr_err("MTKDBG DSI_INTSTA raw=0x%08x masked=0x%08x\n",
-		       status, status & 0xffde);
 
 	/*
 	 * rd_rdy don't clear and wait for ESD &

@@ -113,7 +113,6 @@ EXPORT_SYMBOL(mtk_drm_fault_blacklist_clear);
  * and dump every 2s while the pipeline is supposed to be live. */
 static unsigned int g_pf_released[MAX_CRTC];
 static int g_pf_released_valid[MAX_CRTC];
-static unsigned long g_last_cmdq_cb_jiffies;
 
 /* A12/A13 keep the CMD-mode TE counter here; the frame-config callback
  * resets it to 1 when a doze-active commit lands in frame-trigger mode.
@@ -129,10 +128,6 @@ static void mtk_drm_pf_watchdog(struct work_struct *ws)
 
 	if (!private)
 		return;
-	if (g_last_cmdq_cb_jiffies &&
-	    time_after(jiffies, g_last_cmdq_cb_jiffies + 2 * HZ))
-		pr_notice("MTKDBG CB_STALL cmdq_cb_age=%ums\n",
-			  jiffies_to_msecs(jiffies - g_last_cmdq_cb_jiffies));
 	for (i = 0; i < MAX_CRTC; i++) {
 		struct mtk_drm_crtc *mtk_crtc;
 		unsigned int created, released;
@@ -3352,8 +3347,6 @@ static void ddp_cmdq_cb(struct cmdq_cb_data data)
 		atomic_state,
 		crtc);
 
-	g_last_cmdq_cb_jiffies = jiffies;
-
 	session_id = mtk_get_session_id(crtc);
 
 	id = drm_crtc_index(crtc);
@@ -3626,18 +3619,6 @@ int mtk_crtc_comp_is_busy(struct mtk_drm_crtc *mtk_crtc)
 /* TODO: need to remove this in vdo mode for lowpower */
 static void trig_done_cb(struct cmdq_cb_data data)
 {
-	/* MTKDBG v162: MUTEX0 EN + MMSYS DL state at loop completion
-	 * (rate-limited). DL_VALID_0=0 while READY!=0 means the
-	 * OVL0->RDMA0 link never handshakes even though the SOF was
-	 * produced (EN auto-clears), i.e. the stall is in the MMSYS
-	 * connection, not in the trigger. */
-	{
-		static unsigned int dbg_cnt;
-		extern void mtk_drm_mmsys_dump(void);
-
-		if (++dbg_cnt % 100 == 1)
-			mtk_drm_mmsys_dump();
-	}
 	CRTC_MMP_MARK((unsigned long)data.data, trig_loop_done, 0, 0);
 }
 
@@ -7058,13 +7039,8 @@ void mtk_crtc_vblank_irq(struct drm_crtc *crtc)
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
 	char tag_name[100] = {'\0'};
 	ktime_t ktime = ktime_get();
-	static unsigned int vblank_cnt;
 
 	mtk_crtc->vblank_time = ktime_to_timeval(ktime);
-
-	if (++vblank_cnt % 60 == 1)
-		DDPPR_ERR("MTKDBG VBLANK crtc=%d cnt=%u\n",
-			  drm_crtc_index(crtc), vblank_cnt);
 
 	sprintf(tag_name, "%d|HW_VSYNC|%lld",
 		DRM_TRACE_VSYNC_ID, ktime);

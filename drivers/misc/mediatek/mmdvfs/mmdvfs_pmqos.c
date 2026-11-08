@@ -1392,19 +1392,6 @@ void mm_qos_update_all_request(struct plist_head *owner_list)
 		if (log_level & 1 << log_qoslarb)
 			trace_mmqos__update_qoslarb(i, larb_bw);
 	}
-	/* MTKDBG: 官核的 MM 带宽请求会真正进入 DVFSRC
-	 * (PM_QOS_MM_MEMORY_BW=417，恰等于 DRM 报的 628*133%/2)，
-	 * 而本树实测恒为 0 -> 显示读内存在 DDR 仲裁里拿不到带宽 ->
-	 * 每帧图层读不完(Lx not complete until EOF) -> 花屏。
-	 * 打出聚合明细，一次区分两种可能：
-	 *   larb*_bw/hrt 全 0 -> DRM 的请求根本没进 larb；
-	 *   larb* 非 0 但 mm_bw=0 -> 聚合/上报链路本身没跑到。
-	 */
-	pr_err("MTKDBG mmqos mm_bw=%u req_cnt=%u larb_update=0x%x larb0_bw=%d larb0_hrt=%d larb1_bw=%d larb1_hrt=%d skip_smi=%d\n",
-	       mm_bw, i, larb_update,
-	       larb_req[0].total_bw_data, larb_req[0].total_hrt_data,
-	       larb_req[1].total_bw_data, larb_req[1].total_hrt_data,
-	       skip_smi_config);
 
 	pm_qos_update_request(&mm_bw_request, mm_bw);
 	if (log_level & 1 << log_bw)
