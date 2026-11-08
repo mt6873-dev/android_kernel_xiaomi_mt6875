@@ -631,22 +631,24 @@ CONFIG_TYPEC=y
 # CONFIG_KPROBE_EVENTS is not set
 # CONFIG_PANIC_ON_OOPS is not set
 CONFIG_DEBUG_KINFO=y
+# 关闭 LTO / CFI：MODVERSIONS 的 __crc_* 符号在 ThinLTO 下产生
+# R_AARCH64_ABS32 重定位冲突（ld.lld: cannot be used against symbol
+# __crc_xxx; recompile with -fPIC），且 fpsgo_v3（A12 版）与内核 LTO
+# 符号解析冲突。与 bomb_user_defconfig 保持一致的组合。
 CONFIG_MODVERSIONS=y
-CONFIG_CFI_CLANG_SHADOW=y
-CONFIG_CFI_CLANG=y
+# CONFIG_CFI_CLANG_SHADOW is not set
+# CONFIG_CFI_CLANG is not set
 # CONFIG_CFI_PERMISSIVE is not set
-CONFIG_CFI=y
 # CONFIG_DEBUG_FS is not set
 CONFIG_DEFAULT_SECURITY="selinux"
 # CONFIG_INIT_STACK_ALL is not set
 CONFIG_LOCALVERSION_AUTO=y
 CONFIG_LOCALVERSION="-perf"
 CONFIG_LOG_BUF_SHIFT=21
-CONFIG_LTO_CLANG=y
-# CONFIG_LTO_NONE is not set
-CONFIG_LTO=y
+CONFIG_LTO_NONE=y
+# CONFIG_LTO_CLANG is not set
 CONFIG_SECURITY_SELINUX_BOOTPARAM_VALUE=1
-CONFIG_THINLTO=y
+# CONFIG_THINLTO is not set
 
 # ---- TEE / 安全 ----
 CONFIG_TEE=y
