@@ -248,6 +248,13 @@ static void mtk_dither_prepare(struct mtk_ddp_comp *comp)
 #endif
 #endif
 
+	/* mtk_dither_config() only masks bit0/bit1, so the reserved bits
+	 * bit8/bit31 keep their reset value and CFG reads back 0x80000102
+	 * while stock reads 0x00000002 (stock rewrites the whole CFG in
+	 * prepare).  Rewrite CFG with DITHER_ENGINE_EN so the reserved bits
+	 * are cleared and the engine stays enabled.
+	 */
+	mtk_ddp_write_mask_cpu(comp, 0x2, DISP_REG_DITHER_CFG, ~0);
 }
 
 static void mtk_dither_unprepare(struct mtk_ddp_comp *comp)
