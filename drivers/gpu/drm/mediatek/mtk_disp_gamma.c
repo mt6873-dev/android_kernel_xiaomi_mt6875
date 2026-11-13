@@ -322,6 +322,18 @@ static void mtk_gamma_prepare(struct mtk_ddp_comp *comp)
 {
 	mtk_ddp_comp_clk_prepare(comp);
 	atomic_set(&g_gamma_is_clock_on[index_of_gamma(comp->id)], 1);
+
+	/* Align stock: stock's mtk_gamma_prepare() finishes by writing the
+	 * whole CFG register from uRamffffff800a9cf578, a .bss global that has
+	 * no writer anywhere in the driver, so stock always writes 0 here.
+	 * Writing it in full also clears the reserved bit8 which the hardware
+	 * leaves set at 1.  This tree only masked bit0/bit1 when writing CFG,
+	 * so bit8 stayed at its reset value and the readback differed from
+	 * stock (0x102 vs 0x002).  The bit is non-colour
+	 * (modem-stall/reserved), so behaviour is identical, but keep the
+	 * readback aligned with stock.
+	 */
+	mtk_ddp_write_mask_cpu(comp, 0, DISP_GAMMA_CFG, ~0);
 }
 
 static void mtk_gamma_unprepare(struct mtk_ddp_comp *comp)
