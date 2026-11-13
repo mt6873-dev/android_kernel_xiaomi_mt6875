@@ -626,15 +626,18 @@ static void mtk_atomic_doze_update_dsi_state(struct drm_device *dev,
 		drm_atomic_crtc_needs_modeset(crtc->state),
 		mtk_state->prop_val[CRTC_PROP_DOZE_ACTIVE]);
 
-	if (!mtk_state->doze_changed ||
+	if (!mtk_state->prop_val[CRTC_PROP_DOZE_ACTIVE] ||
 		!drm_atomic_crtc_needs_modeset(crtc->state))
 		return;
 
-	/* consider suspend->doze, doze_suspend->resume when doze prepare
-	 * consider doze->suspend, resume->doze_supend when doze finish
+	/* Align stock (mtk_atomic_doze_update_dsi_state @ 0xffffff800880f718):
+	 * stock gates on doze_active and uses the doze_changed/prepare pairing
+	 *   ((*(u8*)(state+9) != 0) ^ prepare) & 1 == 0
+	 * i.e. doze_changed == prepare.  This tree instead paired
+	 * crtc->state->active with prepare, which switches the DSI output mode
+	 * on the wrong commits (and never on doze->doze_suspend).
 	 */
-	if ((crtc->state->active && prepare) ||
-		(!crtc->state->active && !prepare))
+	if ((mtk_state->doze_changed != 0) == prepare)
 		mtk_crtc_change_output_mode(crtc,
 			mtk_state->prop_val[CRTC_PROP_DOZE_ACTIVE]);
 }
