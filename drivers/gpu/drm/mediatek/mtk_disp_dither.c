@@ -248,17 +248,6 @@ static void mtk_dither_prepare(struct mtk_ddp_comp *comp)
 #endif
 #endif
 
-	/* Align stock: stock's mtk_dither_prepare() finishes by writing the
-	 * whole CFG register from uRamffffff800a9d3e70, a .bss global that has
-	 * no writer anywhere in the driver, so stock always writes 0 here.
-	 * Writing it in full also clears the reserved bits bit8/bit31 which the
-	 * hardware leaves set at 1.  This tree only masked bit0/bit1 when
-	 * writing CFG, so those two bits stayed at their reset value and the
-	 * readback differed from stock (0x80000102 vs 0x00000002).  Both bits
-	 * are non-colour (modem-stall/reserved), so behaviour is identical, but
-	 * keep the readback aligned with stock.
-	 */
-	mtk_ddp_write_mask_cpu(comp, 0, DISP_REG_DITHER_CFG, ~0);
 }
 
 static void mtk_dither_unprepare(struct mtk_ddp_comp *comp)
