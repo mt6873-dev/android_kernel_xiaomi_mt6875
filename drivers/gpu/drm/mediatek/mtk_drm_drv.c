@@ -642,6 +642,65 @@ static void mtk_atomic_doze_update_dsi_state(struct drm_device *dev,
 			mtk_state->prop_val[CRTC_PROP_DOZE_ACTIVE]);
 }
 
+/*
+ * mtk_atomit_doze_update_pq: align with stock (Ghidra @0xffffff800880f1bc).
+ *
+ * Stock walks the crtc components, selects only the PQ types whose
+ * mtk_ddp_comp_type is 5 or 6 (MTK_DISP_CCORR / MTK_DISP_AAL in this tree)
+ * and calls their bypass(comp, val, handle) callback with val derived from
+ * the doze_active property, then flushes the cmdq packet.
+ *
+ * Verified from stock decompile: the bypass callbacks take (comp, val,
+ * handle) and write val into the module CFG relay bit; stock skips the
+ * write when the stored relay value already equals val
+ * (mtk_ccorr_bypass @0x881c714, mtk_aal_bypass @0x882561c).
+ * Note: the async pq_bypass_cmdq_cb submission used by stock is replaced by
+ * a synchronous packet here; the register effect is the same.
+ */
+static void mtk_atomit_doze_update_pq(struct drm_crtc *crtc,
+				      unsigned int doze_changed)
+{
+	struct mtk_crtc_state *mtk_state = to_mtk_crtc_state(crtc->state);
+	unsigned int doze_active = mtk_state->prop_val[CRTC_PROP_DOZE_ACTIVE];
+	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
+	struct mtk_crtc_ddp_ctx *ddp_ctx;
+	struct mtk_ddp_comp *comp;
+	struct cmdq_pkt *handle;
+	unsigned int i, j;
+	int val;
+
+	/* stock: doze flag unchanged and still in AOD -> nothing to do */
+	if (!doze_changed && doze_active)
+		return;
+
+	val = doze_active ? 1 : 0;
+
+	ddp_ctx = &mtk_crtc->ddp_ctx[mtk_crtc->ddp_mode];
+
+	DDPINFO("%s crtc%d doze_active:%d doze_changed:%d val:%d\n",
+		__func__, drm_crtc_index(crtc), doze_active, doze_changed, val);
+
+	mtk_crtc_pkt_create(&handle, &mtk_crtc->base,
+		mtk_crtc->gce_obj.client[CLIENT_CFG]);
+	if (!handle)
+		return;
+
+	for (i = 0; i < DDP_PATH_NR; i++) {
+		for (j = 0; j < ddp_ctx->ddp_comp_nr[i]; j++) {
+			comp = ddp_ctx->ddp_comp[i][j];
+			if (!comp)
+				continue;
+			/* stock only updates the two PQ types (5/6) */
+			if (mtk_ddp_comp_get_type(comp->id) == MTK_DISP_CCORR ||
+			    mtk_ddp_comp_get_type(comp->id) == MTK_DISP_AAL)
+				mtk_ddp_comp_bypass(comp, val, handle);
+		}
+	}
+
+	cmdq_pkt_flush(handle);
+	cmdq_pkt_destroy(handle);
+}
+
 static void mtk_atomic_doze_preparation(struct drm_device *dev,
 					 struct drm_atomic_state *old_state)
 {
@@ -658,6 +717,9 @@ static void mtk_atomic_doze_preparation(struct drm_device *dev,
 			DDPPR_ERR("%s connector has no crtc\n", __func__);
 			continue;
 		}
+
+		mtk_atomit_doze_update_pq(crtc,
+			to_mtk_crtc_state(crtc->state)->doze_changed);
 
 		mtk_atomic_doze_update_dsi_state(dev, crtc, 1);
 
@@ -684,6 +746,9 @@ static void mtk_atomic_doze_finish(struct drm_device *dev,
 		}
 
 		mtk_atomic_doze_update_dsi_state(dev, crtc, 0);
+
+		mtk_atomit_doze_update_pq(crtc,
+			to_mtk_crtc_state(crtc->state)->doze_changed);
 	}
 
 }

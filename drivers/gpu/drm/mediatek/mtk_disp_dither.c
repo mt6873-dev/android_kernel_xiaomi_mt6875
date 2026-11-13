@@ -201,11 +201,14 @@ static void mtk_dither_stop(struct mtk_ddp_comp *comp,
 	priv->pwr_sta = 0;
 }
 
-static void mtk_dither_bypass(struct mtk_ddp_comp *comp,
+static void mtk_dither_bypass(struct mtk_ddp_comp *comp, int val,
 			      struct cmdq_pkt *handle)
 {
 	struct mtk_disp_dither *priv = dev_get_drvdata(comp->dev);
 
+	/* NOTE: UNVERIFIED - stock mtk_dither_bypass(@0x8828808) takes the
+	 * same (comp, val, handle) shape but its val handling was not fully
+	 * decompiled yet, so the original this-tree behaviour is kept. */
 	DDPINFO("%s\n", __func__);
 	g_dither_relay_value[index_of_dither(comp->id)] = 0x1;
 

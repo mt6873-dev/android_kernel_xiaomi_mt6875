@@ -972,13 +972,22 @@ static void mtk_ccorr_start(struct mtk_ddp_comp *comp, struct cmdq_pkt *handle)
 		       comp->regs_pa + DISP_REG_CCORR_EN, 0x1, 0x1);
 }
 
-static void mtk_ccorr_bypass(struct mtk_ddp_comp *comp, struct cmdq_pkt *handle)
+static void mtk_ccorr_bypass(struct mtk_ddp_comp *comp, int val,
+			     struct cmdq_pkt *handle)
 {
+	unsigned int *relay = &g_ccorr_relay_value[index_of_ccorr(comp->id)];
+
 	DDPINFO("%s\n", __func__);
 
+	/* mtk_ccorr_bypass @0xffffff800881c714: stock returns early when the
+	 * stored relay value already equals val, otherwise writes
+	 * DISP_REG_CCORR_CFG = val (mask 0x1) and stores val. */
+	if (*relay == val)
+		return;
+
 	cmdq_pkt_write(handle, comp->cmdq_base,
-		       comp->regs_pa + DISP_REG_CCORR_CFG, 0x1, 0x1);
-	g_ccorr_relay_value[index_of_ccorr(comp->id)] = 0x1;
+		       comp->regs_pa + DISP_REG_CCORR_CFG, val, 0x1);
+	*relay = val;
 }
 
 static int mtk_ccorr_user_cmd(struct mtk_ddp_comp *comp,

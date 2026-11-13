@@ -134,6 +134,9 @@ static struct DISP_AAL_DISPLAY_SIZE g_dual_aal_size;
 
 static atomic_t g_aal_panel_type = ATOMIC_INIT(CONFIG_BY_CUSTOM_LIB);
 static int g_aal_ess_level = ESS_LEVEL_BY_CUSTOM_LIB;
+/* stock keeps the last written AAL_CFG relay value in a global
+ * (mtk_aal_bypass @0xffffff800882561c, g_aal_relay_value) */
+static unsigned int g_aal_relay_value;
 static int g_aal_dre_en = DRE_EN_BY_CUSTOM_LIB;
 static int g_aal_ess_en = ESS_EN_BY_CUSTOM_LIB;
 static int g_aal_ess_level_cmd_id;
@@ -2155,12 +2158,24 @@ static void mtk_aal_stop(struct mtk_ddp_comp *comp, struct cmdq_pkt *handle)
 	basic_cmdq_write(handle, comp, DISP_AAL_EN, 0x0, ~0);
 }
 
-static void mtk_aal_bypass(struct mtk_ddp_comp *comp, struct cmdq_pkt *handle)
+static void mtk_aal_bypass(struct mtk_ddp_comp *comp, int val,
+			   struct cmdq_pkt *handle)
 {
 #if 1
+	/* mtk_aal_bypass @0xffffff800882561c: stock returns early when the
+	 * stored relay value equals val; otherwise writes AAL_CFG = val
+	 * (mask 0x1), stores val, and when clearing the bypass (val == 0)
+	 * additionally writes AAL_CFG = 0x6 with mask 0x6. */
+	if (g_aal_relay_value == val)
+		return;
+
 	AALFLOW_LOG("\n");
 	cmdq_pkt_write(handle, comp->cmdq_base, comp->regs_pa + DISP_AAL_CFG,
-		0x1, 0x1);
+		val, 0x1);
+	g_aal_relay_value = val;
+	if (val == 0)
+		cmdq_pkt_write(handle, comp->cmdq_base,
+			comp->regs_pa + DISP_AAL_CFG, 0x6, 0x6);
 #else
 	AALFLOW_LOG("is ignored\n");
 #endif

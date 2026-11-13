@@ -232,13 +232,16 @@ static void mtk_gamma_stop(struct mtk_ddp_comp *comp, struct cmdq_pkt *handle)
 		comp->regs_pa + DISP_GAMMA_EN, 0x0, ~0);
 }
 
-static void mtk_gamma_bypass(struct mtk_ddp_comp *comp, struct cmdq_pkt *handle)
+static void mtk_gamma_bypass(struct mtk_ddp_comp *comp, int val,
+			     struct cmdq_pkt *handle)
 {
 	DDPINFO("%s\n", __func__);
 
+	/* mtk_gamma_bypass @0xffffff800881dbec: stock writes CFG = val
+	 * (mask 0x1) and stores val as the relay state. */
 	cmdq_pkt_write(handle, comp->cmdq_base,
-		comp->regs_pa + DISP_GAMMA_CFG, 0x1, 0x1);
-	g_gamma_relay_value[index_of_gamma(comp->id)] = 0x1;
+		comp->regs_pa + DISP_GAMMA_CFG, val, 0x1);
+	g_gamma_relay_value[index_of_gamma(comp->id)] = val;
 
 }
 

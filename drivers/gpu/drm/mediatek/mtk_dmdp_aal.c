@@ -88,7 +88,7 @@ static void mtk_dmdp_aal_stop(struct mtk_ddp_comp *comp,
 		       0x0, ~0);
 }
 
-static void mtk_dmdp_aal_bypass(struct mtk_ddp_comp *comp,
+static void mtk_dmdp_aal_bypass(struct mtk_ddp_comp *comp, int val,
 	struct cmdq_pkt *handle)
 {
 	DDPINFO("%s\n", __func__);

@@ -3013,7 +3013,8 @@ static void mtk_color_stop(struct mtk_ddp_comp *comp, struct cmdq_pkt *handle)
 		DRM_ERROR("Failed to disable power domain: %d\n", ret);
 }
 
-static void mtk_color_bypass(struct mtk_ddp_comp *comp, struct cmdq_pkt *handle)
+static void mtk_color_bypass(struct mtk_ddp_comp *comp, int val,
+			     struct cmdq_pkt *handle)
 {
 	struct mtk_disp_color *color = comp_to_color(comp);
 
