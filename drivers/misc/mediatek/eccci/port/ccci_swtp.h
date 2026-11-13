@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -30,7 +31,6 @@
 
 struct swtp_t {
 	unsigned int	md_id;
-	unsigned int	curr_mode;
 	unsigned int	irq[MAX_PIN_NUM];
 	unsigned int	gpiopin[MAX_PIN_NUM];
 	unsigned int	setdebounce[MAX_PIN_NUM];
@@ -39,16 +39,9 @@ struct swtp_t {
 	int	tx_power_mode;
 	spinlock_t		spinlock;
 	struct delayed_work delayed_work;
-	struct delayed_work init_delayed_work;
 };
 /*****************************************************************************/
 /* External API Region called by ccci_swtp object */
 /*****************************************************************************/
 extern int swtp_init(int md_id);
-extern void inject_pin_status_event(int pin_value, const char pin_name[]);
-#ifdef OPLUS_FEATURE_SWTP
-//Add for caple detect when SIM plug in
-extern int ccci_get_gpio175_value(void);
-extern unsigned int is_project(int project);
-#endif /* OPLUS_FEATURE_SWTP */
 #endif				/* __SWTP_H__ */

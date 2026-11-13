@@ -30,8 +30,10 @@ ccci_hif_all-y += ccci_hif_cldma.o
 ccci_hif_all-y += ccci_hif_dpmaif.o
 ccci_hif_all-y += dpmaif_drv.o
 ccci_hif_all-y += net_speed_monitor.o
-ccci_hif_all-y += ccci_ringbuf.o ccci_hif_ccif.o
 
+ifeq ($(CONFIG_MTK_ECCCI_C2K), y)
+ccci_hif_all-y += ccci_ringbuf.o ccci_hif_ccif.o
+endif
 
 else
 obj-  := dummy.o # avoid build error

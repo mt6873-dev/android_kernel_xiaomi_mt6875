@@ -195,13 +195,8 @@ static inline void ccci_md_check_rx_seq_num(unsigned char md_id,
 static inline void ccci_channel_update_packet_counter(
 	unsigned long *logic_ch_pkt_cnt, struct ccci_header *ccci_h)
 {
-	if ((ccci_h->channel & 0xFFFF) < CCCI_MAX_CH_NUM) {
+	if ((ccci_h->channel & 0xFF) < CCCI_MAX_CH_NUM)
 		logic_ch_pkt_cnt[ccci_h->channel]++;
-	} else {
-		CCCI_ERROR_LOG(-1, CORE,
-			"channel %d exceeded the threshold %d\n",
-			ccci_h->channel, CCCI_MAX_CH_NUM);
-	}
 }
 
 static inline void ccci_channel_dump_packet_counter(
@@ -239,21 +234,18 @@ static inline unsigned int ccci_md_get_seq_num(
 int mtk_ccci_speed_monitor_init(void);
 void mtk_ccci_add_dl_pkt_size(int size);
 void mtk_ccci_add_ul_pkt_size(int size);
-int mtk_ccci_toggle_net_speed_log(void);
 
 struct dvfs_ref {
 	u64 speed;
-	int c0_freq; /* Cluster 0 */
-	int c1_freq; /* Cluster 1 */
-	int c2_freq; /* Cluster 2 */
-	int c3_freq; /* Cluster 3 */
-	int dram_lvl;
+	int c0_freq;
+	int c1_freq;
+	u8 dram_lvl;
 	u8 irq_affinity;
 	u8 task_affinity;
 	u8 rps;
 };
 
-struct dvfs_ref *mtk_ccci_get_dvfs_table(int is_ul, int *tbl_num);
+struct dvfs_ref *mtk_ccci_get_dvfs_table(int *tbl_num);
 
-extern void ccmni_set_cur_speed(u64 cur_dl_speed);
+
 #endif

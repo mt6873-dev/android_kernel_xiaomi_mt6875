@@ -83,7 +83,7 @@ int port_ipc_recv_match(struct port_t *port, struct sk_buff *skb)
 	struct ccci_header *ccci_h = (struct ccci_header *)skb->data;
 	struct ccci_ipc_ctrl *ipc_ctrl =
 		(struct ccci_ipc_ctrl *)port->private_data;
-	struct ipc_task_id_map *id_map = NULL;
+	struct ipc_task_id_map *id_map;
 
 	if (port->rx_ch != CCCI_IPC_RX)
 		return 1;
@@ -245,9 +245,9 @@ static int port_ipc_kernel_write(int md_id, struct ipc_ilm *in_ilm)
 	u32 task_id;
 	int count, actual_count, ret;
 	struct port_t *port;
-	struct ccci_header *ccci_h = NULL;
-	struct ccci_ipc_ilm *ilm = NULL;
-	struct sk_buff *skb = NULL;
+	struct ccci_header *ccci_h;
+	struct ccci_ipc_ilm *ilm;
+	struct sk_buff *skb;
 
 	/* src module id check */
 	task_id = in_ilm->src_mod_id & (~AP_UNIFY_ID_FLAG);
@@ -334,26 +334,27 @@ static int ccci_ipc_send_ilm_to_md1(struct ipc_ilm *in_ilm)
 static int port_ipc_kernel_thread(void *arg)
 {
 	struct port_t *port = arg;
-	struct sk_buff *skb = NULL;
-	struct ccci_header *ccci_h = NULL;
+	struct sk_buff *skb;
+	struct ccci_header *ccci_h;
 	unsigned long flags;
 	int ret = 0;
-	struct ccci_ipc_ilm *ilm = NULL;
+	struct ccci_ipc_ilm *ilm;
 	struct ipc_ilm out_ilm;
-	struct ipc_task_id_map *id_map = NULL;
+	struct ipc_task_id_map *id_map;
 
 	CCCI_DEBUG_LOG(port->md_id, IPC,
 		"port %s's thread running\n", port->name);
 
-	while (!kthread_should_stop()) {
+	while (1) {
 retry:
 		if (skb_queue_empty(&port->rx_skb_list)) {
 			ret = wait_event_interruptible(port->rx_wq,
 				!skb_queue_empty(&port->rx_skb_list));
 			if (ret == -ERESTARTSYS)
-				continue;
+				continue;	/* FIXME */
 		}
-
+		if (kthread_should_stop())
+			break;
 		CCCI_DEBUG_LOG(port->md_id, IPC,
 			"read on %s\n", port->name);
 		/* 1. dequeue */
@@ -383,9 +384,7 @@ retry:
 			switch (id_map->task_id) {
 			case AP_IPC_WMT:
 #ifdef CONFIG_MTK_CONN_MD
-#ifndef CCCI_PLATFORM_MT6877
 				mtk_conn_md_bridge_send_msg(&out_ilm);
-#endif
 #endif
 				break;
 			case AP_IPC_PKTTRC:
@@ -419,7 +418,7 @@ retry:
 }
 int port_ipc_init(struct port_t *port)
 {
-	struct cdev *dev = NULL;
+	struct cdev *dev;
 	int ret = 0;
 	struct ccci_ipc_ctrl *ipc_ctrl =
 		kmalloc(sizeof(struct ccci_ipc_ctrl), GFP_KERNEL);

@@ -272,6 +272,8 @@ extern void mtk_ccci_ccb_info_peek(void);
 	_IOWR(CCCI_IOC_MAGIC, 64, struct ccci_ccb_config)
 #define CCCI_IOC_CCB_CTRL_OFFSET		\
 	_IOR(CCCI_IOC_MAGIC, 65, unsigned int)
+#define CCCI_IOC_GET_CCB_DEBUG_VAL		\
+	_IOWR(CCCI_IOC_MAGIC, 67, struct ccci_ccb_debug)
 
 #define CCCI_IOC_CCB_CTRL_INFO			\
 	_IOWR(CCCI_IOC_MAGIC, 71, struct ccb_ctrl_info)
@@ -290,16 +292,7 @@ extern void mtk_ccci_ccb_info_peek(void);
 /* RILD  factory */
 #define CCCI_IOC_LEAVE_DEEP_FLIGHT_ENHANCED     \
 	_IO(CCCI_IOC_MAGIC,  124)
-/* RILD nodify ccci power off md */
-#define CCCI_IOC_RILD_POWER_OFF_MD		\
-	_IO(CCCI_IOC_MAGIC,  125)
 
-#ifdef OPLUS_FEATURE_SWTP
-//Add for caple detect when SIM plug in
-/* RILD  */
-#define CCCI_IOC_SIM_INSERTED_FOR_SWITCH_RF_SAR     \
-    _IO(CCCI_IOC_MAGIC,  126)
-#endif /* OPLUS_FEATURE_SWTP */
 
 #define CCCI_IPC_MAGIC 'P' /* only for IPC user */
 #define CCCI_IPC_RESET_RECV			_IO(CCCI_IPC_MAGIC, 0)
@@ -494,9 +487,6 @@ enum CCCI_CH {
 	CCCI_UDC_RX			= 177,
 	CCCI_UDC_TX			= 178,
 
-	CCCI_MIPI_CHANNEL_RX	= 179,
-	CCCI_MIPI_CHANNEL_TX	= 180,
-
 	CCCI_TCHE_RX			= 181,
 	CCCI_TCHE_TX			= 182,
 	CCCI_DISP_RX			= 183,
@@ -515,15 +505,6 @@ enum CCCI_CH {
 	CCCI_TIME_TX			= 203,
 	CCCI_GARB_RX			= 204,
 	CCCI_GARB_TX			= 205,
-
-	CCCI_EPDG1_RX			= 236,
-	CCCI_EPDG1_TX			= 237,
-	CCCI_EPDG2_RX			= 238,
-	CCCI_EPDG2_TX			= 239,
-	CCCI_EPDG3_RX			= 240,
-	CCCI_EPDG3_TX			= 241,
-	CCCI_EPDG4_RX			= 242,
-	CCCI_EPDG4_TX			= 243,
 
 	CCCI_C2K_PPP_DATA, /* data ch for c2k */
 
@@ -609,7 +590,6 @@ enum md_bc_event {
 	MD_STA_EV_READY,
 	MD_STA_EV_EXCEPTION,
 	MD_STA_EV_STOP,
-	MD_STA_EV_RILD_POWEROFF_START,
 };
 
 /* ========================================================================= */

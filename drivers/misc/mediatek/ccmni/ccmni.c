@@ -87,29 +87,6 @@ void set_ccmni_rps(unsigned long value)
 }
 EXPORT_SYMBOL(set_ccmni_rps);
 
-static u64 g_cur_dl_speed;
-
-void ccmni_set_cur_speed(u64 cur_dl_speed)
-{
-	g_cur_dl_speed = cur_dl_speed;
-}
-EXPORT_SYMBOL(ccmni_set_cur_speed);
-
-void ccmni_clr_flush_timer(void)
-{
-	int i = 0;
-	struct ccmni_ctl_block *ctlb = ccmni_ctl_blk[0];
-
-	if (ctlb == NULL)
-		return;
-
-	for (i = 0; i < ctlb->ccci_ops->ccmni_num; i++)
-		if (ctlb->ccmni_inst[i] && ctlb->ccmni_inst[i]->dev)
-			if (ctlb->ccmni_inst[i]->dev->flags & IFF_UP)
-				getnstimeofday(&ctlb->ccmni_inst[i]->flush_time);
-}
-EXPORT_SYMBOL(ccmni_clr_flush_timer);
-
 /********************internal function*********************/
 static void ccmni_make_etherframe(int md_id, struct net_device *dev,
 	void *_eth_hdr, unsigned char *mac_addr, unsigned int packet_type)
