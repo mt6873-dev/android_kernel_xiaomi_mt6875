@@ -263,8 +263,11 @@ static void mtk_dither_prepare(struct mtk_ddp_comp *comp)
 	 * are cleared and the engine stays enabled.
 	 */
 	if (dither_force_bypass) {
-		/* relay mode == bypass, for the A/B test */
-		mtk_ddp_write_mask_cpu(comp, 0x1, DISP_REG_DITHER_CFG, ~0);
+		/* relay mode == bypass; also pin the cached relay value so the
+		 * per-frame mtk_dither_config() keeps writing relay=1 instead
+		 * of overwriting it back to 0. */
+		g_dither_relay_value[index_of_dither(comp->id)] = 0x1;
+		mtk_ddp_write_mask_cpu(comp, 0x3, DISP_REG_DITHER_CFG, ~0);
 	} else {
 		mtk_ddp_write_mask_cpu(comp, 0x2, DISP_REG_DITHER_CFG, ~0);
 	}
