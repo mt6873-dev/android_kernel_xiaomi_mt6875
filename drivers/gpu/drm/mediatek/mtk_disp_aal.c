@@ -2162,17 +2162,14 @@ static void mtk_aal_bypass(struct mtk_ddp_comp *comp, int val,
 			   struct cmdq_pkt *handle)
 {
 #if 1
-	/* mtk_aal_bypass @0xffffff800882561c: stock returns early when the
-	 * stored relay value equals val; otherwise writes AAL_CFG = val
-	 * (mask 0x1), stores val, and when clearing the bypass (val == 0)
-	 * additionally writes AAL_CFG = 0x6 with mask 0x6. */
-	if (g_aal_relay_value == val)
-		return;
-
-	AALFLOW_LOG("\n");
-	cmdq_pkt_write(handle, comp->cmdq_base, comp->regs_pa + DISP_AAL_CFG,
-		val, 0x1);
-	g_aal_relay_value = val;
+	/* Stock updates bit 0 only on a relay transition, but writes bits
+	 * 1 and 2 whenever bypass is disabled, including unchanged state. */
+	if (g_aal_relay_value != val) {
+		AALFLOW_LOG("\n");
+		cmdq_pkt_write(handle, comp->cmdq_base,
+			comp->regs_pa + DISP_AAL_CFG, val, 0x1);
+		g_aal_relay_value = val;
+	}
 	if (val == 0)
 		cmdq_pkt_write(handle, comp->cmdq_base,
 			comp->regs_pa + DISP_AAL_CFG, 0x6, 0x6);
