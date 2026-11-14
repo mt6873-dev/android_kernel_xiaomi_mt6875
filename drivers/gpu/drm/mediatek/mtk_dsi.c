@@ -6361,8 +6361,12 @@ static int mtk_dsi_io_cmd_dispparam(struct mtk_ddp_comp *comp, struct cmdq_pkt *
 			 * regular OFF request (~1.5s later in the logs).
 			 */
 			panel_ext = mtk_dsi_get_panel_ext(comp);
-			pr_info("whitepoint xy: %u\n", wp_val);
-			if (wp_val == 1 && panel_ext && panel_ext->funcs &&
+			pr_info("whitepoint xy: %#x\n", wp_val);
+			/* params points at an in-kernel command template, so
+			 * *params is never 1 here; stock therefore always takes
+			 * its "else" branch which ends in
+			 * normal_hbm_control(panel, false). */
+			if (panel_ext && panel_ext->funcs &&
 			    panel_ext->funcs->normal_hbm_control)
 				panel_ext->funcs->normal_hbm_control(
 					dsi->panel, false);
