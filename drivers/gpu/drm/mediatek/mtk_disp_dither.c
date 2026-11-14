@@ -17,6 +17,7 @@
 #include <linux/component.h>
 #include <linux/of_device.h>
 #include <linux/of_irq.h>
+#include <linux/moduleparam.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/soc/mediatek/mtk-cmdq.h>
@@ -58,6 +59,13 @@
 #define DITHER_TOTAL_MODULE_NUM (2)
 static unsigned int g_dither_relay_value[DITHER_TOTAL_MODULE_NUM];
 #define index_of_dither(module) ((module == DDP_COMPONENT_DITHER0) ? 0 : 1)
+/* TEMP DIAG for the dither A/B test: when set, prepare forces the block
+ * into relay (bypass) mode so the on-screen banding can be compared with
+ * and without dithering.  Default 0 keeps the normal behaviour. */
+static bool dither_force_bypass;
+module_param(dither_force_bypass, bool, 0644);
+MODULE_PARM_DESC(dither_force_bypass, "force dither bypass (A/B test)");
+
 static atomic_t g_dither_is_clock_on = ATOMIC_INIT(0);
 static DEFINE_SPINLOCK(g_dither_clock_lock);
 
@@ -254,7 +262,12 @@ static void mtk_dither_prepare(struct mtk_ddp_comp *comp)
 	 * prepare).  Rewrite CFG with DITHER_ENGINE_EN so the reserved bits
 	 * are cleared and the engine stays enabled.
 	 */
-	mtk_ddp_write_mask_cpu(comp, 0x2, DISP_REG_DITHER_CFG, ~0);
+	if (dither_force_bypass) {
+		/* relay mode == bypass, for the A/B test */
+		mtk_ddp_write_mask_cpu(comp, 0x1, DISP_REG_DITHER_CFG, ~0);
+	} else {
+		mtk_ddp_write_mask_cpu(comp, 0x2, DISP_REG_DITHER_CFG, ~0);
+	}
 }
 
 static void mtk_dither_unprepare(struct mtk_ddp_comp *comp)
