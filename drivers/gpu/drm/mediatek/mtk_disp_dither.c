@@ -17,7 +17,6 @@
 #include <linux/component.h>
 #include <linux/of_device.h>
 #include <linux/of_irq.h>
-#include <linux/moduleparam.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/soc/mediatek/mtk-cmdq.h>
@@ -59,18 +58,13 @@
 #define DITHER_TOTAL_MODULE_NUM (2)
 static unsigned int g_dither_relay_value[DITHER_TOTAL_MODULE_NUM];
 #define index_of_dither(module) ((module == DDP_COMPONENT_DITHER0) ? 0 : 1)
-/* TEMP DIAG for the dither A/B test: when set, prepare forces the block
- * into relay (bypass) mode so the on-screen banding can be compared with
- * and without dithering.  Default 0 keeps the normal behaviour. */
-static bool dither_force_bypass;
-module_param(dither_force_bypass, bool, 0644);
-MODULE_PARM_DESC(dither_force_bypass, "force dither bypass (A/B test)");
-
+static unsigned int g_dither_saved_cfg;
 static atomic_t g_dither_is_clock_on = ATOMIC_INIT(0);
 static DEFINE_SPINLOCK(g_dither_clock_lock);
 
 enum COLOR_IOCTL_CMD {
 	DITHER_SELECT = 0,
+	DITHER_BYPASS,
 };
 
 struct mtk_disp_dither_data {
@@ -214,13 +208,10 @@ static void mtk_dither_bypass(struct mtk_ddp_comp *comp, int val,
 {
 	struct mtk_disp_dither *priv = dev_get_drvdata(comp->dev);
 
-	/* NOTE: UNVERIFIED - stock mtk_dither_bypass(@0x8828808) takes the
-	 * same (comp, val, handle) shape but its val handling was not fully
-	 * decompiled yet, so the original this-tree behaviour is kept. */
 	DDPINFO("%s\n", __func__);
-	g_dither_relay_value[index_of_dither(comp->id)] = 0x1;
+	g_dither_relay_value[index_of_dither(comp->id)] = val;
 
-	priv->cfg_reg = 0x1 | (priv->cfg_reg & ~0x1);
+	priv->cfg_reg = (priv->cfg_reg & ~0x1) | (val != 0);
 
 	cmdq_pkt_write(handle, comp->cmdq_base,
 		comp->regs_pa + DISP_REG_DITHER_CFG,
@@ -256,21 +247,9 @@ static void mtk_dither_prepare(struct mtk_ddp_comp *comp)
 #endif
 #endif
 
-	/* mtk_dither_config() only masks bit0/bit1, so the reserved bits
-	 * bit8/bit31 keep their reset value and CFG reads back 0x80000102
-	 * while stock reads 0x00000002 (stock rewrites the whole CFG in
-	 * prepare).  Rewrite CFG with DITHER_ENGINE_EN so the reserved bits
-	 * are cleared and the engine stays enabled.
-	 */
-	if (dither_force_bypass) {
-		/* relay mode == bypass; also pin the cached relay value so the
-		 * per-frame mtk_dither_config() keeps writing relay=1 instead
-		 * of overwriting it back to 0. */
-		g_dither_relay_value[index_of_dither(comp->id)] = 0x1;
-		mtk_ddp_write_mask_cpu(comp, 0x3, DISP_REG_DITHER_CFG, ~0);
-	} else {
-		mtk_ddp_write_mask_cpu(comp, 0x2, DISP_REG_DITHER_CFG, ~0);
-	}
+	/* Restore the CFG saved before the clock was disabled. */
+	mtk_ddp_write_mask_cpu(comp, g_dither_saved_cfg,
+			       DISP_REG_DITHER_CFG, ~0);
 }
 
 static void mtk_dither_unprepare(struct mtk_ddp_comp *comp)
@@ -287,6 +266,7 @@ static void mtk_dither_unprepare(struct mtk_ddp_comp *comp)
 	DDPINFO("%s @ %d......... spin_unlock_irqrestore ",
 		__func__, __LINE__);
 
+	g_dither_saved_cfg = readl(comp->regs + DISP_REG_DITHER_CFG);
 	mtk_ddp_comp_clk_unprepare(comp);
 }
 
@@ -375,6 +355,9 @@ static int mtk_dither_user_cmd(struct mtk_ddp_comp *comp,
 		mtk_dither_select(comp, NULL, bpc);
 	}
 	break;
+	case DITHER_BYPASS:
+		mtk_dither_bypass(comp, *(int *)data, handle);
+		break;
 	default:
 		DDPPR_ERR("%s: error cmd: %d\n", __func__, cmd);
 		return -EINVAL;
