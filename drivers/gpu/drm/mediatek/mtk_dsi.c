@@ -6339,6 +6339,25 @@ static int mtk_dsi_io_cmd_dispparam(struct mtk_ddp_comp *comp, struct cmdq_pkt *
 
 	cmd_temp = cmd & 0x0F0000;
 	switch (cmd_temp) {
+		case DISPPARAM_WHITEPOINT_XY:
+		{
+			u32 wp_val = *(u32 *)params;
+
+			/* stock handles this cmd (case 0xe @0x8884e08): on
+			 * wp_val == 1 it calls normal_hbm_control(panel, false)
+			 * which turns HBM/FOD off right away.  This tree
+			 * ignored the cmd, so HBM stayed on until the next
+			 * regular OFF request (~1.5s later in the logs).
+			 */
+			panel_ext = mtk_dsi_get_panel_ext(comp);
+			pr_info("whitepoint xy: %u\n", wp_val);
+			if (wp_val == 1 && panel_ext && panel_ext->funcs &&
+			    panel_ext->funcs->normal_hbm_control)
+				panel_ext->funcs->normal_hbm_control(
+					dsi->panel, false);
+			break;
+		}
+
 		case DISPPARAM_DC_ON:
 		{
 			dsi->dc_flag = true;
