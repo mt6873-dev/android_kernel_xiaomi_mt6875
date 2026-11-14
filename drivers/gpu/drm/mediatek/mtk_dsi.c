@@ -132,9 +132,6 @@ extern u64 mmdvfs_qos_get_freq(u32 pm_qos_class);
 #define TXRX_CTRL_FLD_REG_EXT_TE_EDGE REG_FLD_MSB_LSB(10, 10)
 #define TXRX_CTRL_FLD_REG_HSTX_CKLP_EN REG_FLD_MSB_LSB(16, 16)
 
-/* TEMP DIAG: set to 0 after the stock parameter comparison */
-#define DISPPARAM_DIAG 1
-
 #define DSI_PSCTRL 0x1c
 #define DSI_PS_WC	REG_FLD_MSB_LSB(14, 0)
 #define DSI_PS_SEL	REG_FLD_MSB_LSB(18, 16)
@@ -6307,14 +6304,6 @@ static int mtk_dsi_io_cmd_dispparam(struct mtk_ddp_comp *comp, struct cmdq_pkt *
 		need_dsi_lock = false;
 
 	pr_info("%s-%d:dsi = %p, cmd = %s \n",__func__, __LINE__, dsi, get_dispparam_name(cmd));
-#if defined(DISPPARAM_DIAG)
-	/* TEMP DIAG (remove after stock comparison): dump the payload so the
-	 * WARM/DEFAULT/COLD/WHITEPOINT parameters can be compared with stock.
-	 * Only the first u32 is printed; every dispparam cmd carries it. */
-	pr_info("DDPDIAG dispparam cmd=%s cmd_raw=%#x params=%px val0=%#x\n",
-		get_dispparam_name(cmd), cmd, params,
-		params ? *(u32 *)params : 0);
-#endif
 
 	if (need_dsi_lock) {
 		mutex_lock(&dsi->dsi_lock);
