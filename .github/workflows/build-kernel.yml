@@ -83,6 +83,23 @@ jobs:
       run: |
         set -e
         echo "KernelSU: 启用 (SukiSU builtin-new 分支)"
+        # Pre-clone with shallow depth + retry to avoid TLS timeout on port 20004.
+        # setup.sh skips clone if KernelSU/ already exists.
+        git config --global http.postBuffer 524288000
+        git config --global http.lowSpeedLimit 0
+        git config --global http.lowSpeedTime 999999
+        for i in 1 2 3; do
+          if [ -d KernelSU/.git ]; then
+            echo "KernelSU already cloned"
+            break
+          fi
+          echo "Clone attempt $i..."
+          rm -rf KernelSU
+          git clone --depth 1 https://git.zako.shirkneko.top:20004/shirkneko/SukiSU KernelSU && break
+          echo "Clone failed, retrying in 5s..."
+          sleep 5
+        done
+        [ -d KernelSU/.git ] || { echo "FATAL: KernelSU clone failed after 3 attempts"; exit 1; }
         curl -LSs "https://git.zako.shirkneko.top:20004/shirkneko/SukiSU/raw/branch/main/kernel/setup.sh" | bash -s builtin-new
 
     - name: Patch KernelSU for Linux 4.14 compat
