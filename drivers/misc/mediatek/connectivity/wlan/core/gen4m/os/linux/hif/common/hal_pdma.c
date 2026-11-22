@@ -633,6 +633,38 @@ u_int8_t halTxIsDataBufEnough(IN struct ADAPTER *prAdapter,
 	return FALSE;
 }
 
+/*
+ * Per-BSS HIF-level TX flow control.
+ * Matches stock halIsTxBssCntFull() @ 0x287238:
+ *   if (bssIndex < 4 && threshold <= au4TxBssCnt[bssIndex]) return TRUE;
+ * Counter is a HIF-level in-flight count (incremented in kalDevWriteData,
+ * decremented in kalSendCompleteAndAwakeQueue).
+ */
+u_int8_t halIsTxBssCntFull(IN struct ADAPTER *prAdapter,
+	IN uint8_t ucBssIndex)
+{
+	struct TX_CTRL *prTxCtrl;
+
+	prTxCtrl = &prAdapter->rTxCtrl;
+
+	if (ucBssIndex >= MAX_BSSID_NUM)
+		return FALSE;
+
+	if (prTxCtrl->u4TxBssCntLimit <=
+	    prTxCtrl->au4TxBssCnt[ucBssIndex]) {
+		DBGLOG(HAL, TRACE,
+			"Bss[%d] tx full, Cnt[%u:%u:%u:%u]\n",
+			ucBssIndex,
+			prTxCtrl->au4TxBssCnt[0],
+			prTxCtrl->au4TxBssCnt[1],
+			prTxCtrl->au4TxBssCnt[2],
+			prTxCtrl->au4TxBssCnt[3]);
+		return TRUE;
+	}
+
+	return FALSE;
+}
+
 static void halDefaultProcessTxInterrupt(IN struct ADAPTER *prAdapter)
 {
 	struct BUS_INFO *prBusInfo = prAdapter->chip_info->bus_info;

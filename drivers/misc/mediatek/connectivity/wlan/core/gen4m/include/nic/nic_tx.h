@@ -697,6 +697,12 @@ struct TX_CTRL {
 
 	/* Store SysTime of Last TxDone successfully */
 	uint32_t u4LastTxTime[MAX_BSSID_NUM];
+
+	/* Per-BSS HIF-level TX in-flight count, matching stock
+	 * halIsTxBssCntFull() at offsets 0x678e8[4] / 0x678f8.
+	 * Incremented in kalDevWriteData, decremented on TX done. */
+	uint32_t au4TxBssCnt[MAX_BSSID_NUM];
+	uint32_t u4TxBssCntLimit;
 };
 
 enum ENUM_TX_PACKET_TYPE {

@@ -2358,6 +2358,9 @@ void kalSendCompleteAndAwakeQueue(IN struct GLUE_INFO
 	GLUE_DEC_REF_CNT(
 		prGlueInfo->ai4TxPendingFrameNumPerQueue[ucBssIndex]
 		[u2QueueIdx]);
+	if (ucBssIndex < MAX_BSSID_NUM &&
+	    prGlueInfo->prAdapter->rTxCtrl.au4TxBssCnt[ucBssIndex] > 0)
+		prGlueInfo->prAdapter->rTxCtrl.au4TxBssCnt[ucBssIndex]--;
 
 	DBGLOG(TX, LOUD,
 	       "Release frame for BSS[%u] QIDX[%u] PKT_LEN[%u] TOT_CNT[%d] PER-Q_CNT[%d]\n",

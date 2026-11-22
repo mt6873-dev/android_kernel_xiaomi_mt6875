@@ -1164,6 +1164,8 @@ void halTxCancelSendingCmd(IN struct ADAPTER *prAdapter,
 void halTxCancelAllSending(IN struct ADAPTER *prAdapter);
 u_int8_t halTxIsDataBufEnough(IN struct ADAPTER *prAdapter,
 	IN struct MSDU_INFO *prMsduInfo);
+u_int8_t halIsTxBssCntFull(IN struct ADAPTER *prAdapter,
+	IN uint8_t ucBssIndex);
 void halProcessTxInterrupt(IN struct ADAPTER *prAdapter);
 uint32_t halTxPollingResource(IN struct ADAPTER *prAdapter,
 	IN uint8_t ucTC);

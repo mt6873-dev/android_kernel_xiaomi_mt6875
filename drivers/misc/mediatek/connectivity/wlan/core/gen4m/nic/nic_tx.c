@@ -294,6 +294,13 @@ void nicTxInitialize(IN struct ADAPTER *prAdapter)
 	/* enable/disable TX resource control */
 	prTxCtrl->fgIsTxResourceCtrl = NIC_TX_RESOURCE_CTRL;
 
+	/* Per-BSS HIF-level TX in-flight limit (stock halIsTxBssCntFull).
+	 * Default 64: prevents one BSS from flooding the HIF and
+	 * causing netif_stop_subqueue jitter. */
+	prTxCtrl->u4TxBssCntLimit = 64;
+	for (i = 0; i < MAX_BSSID_NUM; i++)
+		prTxCtrl->au4TxBssCnt[i] = 0;
+
 	prAdapter->cArpNoResponseIdx = -1;
 
 	qmInit(prAdapter, halIsTxResourceControlEn(prAdapter));
@@ -2303,6 +2310,13 @@ uint32_t nicTxMsduQueue(IN struct ADAPTER *prAdapter,
 			break;
 		}
 
+		if (halIsTxBssCntFull(prAdapter,
+				prMsduInfo->ucBssIndex)) {
+			QUEUE_INSERT_HEAD(prQue,
+				(struct QUE_ENTRY *) prMsduInfo);
+			break;
+		}
+
 		fgTxDoneHandler = prMsduInfo->pfTxDoneHandler ?
 				TRUE : FALSE;
 
@@ -2324,6 +2338,8 @@ uint32_t nicTxMsduQueue(IN struct ADAPTER *prAdapter,
 #if (CFG_SUPPORT_STATISTICS == 1)
 		StatsEnvTxTime2Hif(prAdapter, prMsduInfo);
 #endif
+		if (prMsduInfo->ucBssIndex < MAX_BSSID_NUM)
+			prTxCtrl->au4TxBssCnt[prMsduInfo->ucBssIndex]++;
 		HAL_WRITE_TX_DATA(prAdapter, prMsduInfo);
 	}
 
@@ -4863,6 +4879,9 @@ static uint32_t nicTxDirectStartXmitMain(struct sk_buff
 			KAL_RELEASE_SPIN_LOCK(prAdapter,
 				SPIN_LOCK_TXING_MGMT_LIST);
 		}
+		if (prMsduInfo->ucBssIndex < MAX_BSSID_NUM)
+			prAdapter->rTxCtrl.au4TxBssCnt[
+				prMsduInfo->ucBssIndex]++;
 		HAL_WRITE_TX_DATA(prAdapter, prMsduInfo);
 
 		if (QUEUE_IS_NOT_EMPTY(
