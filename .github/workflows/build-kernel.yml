@@ -78,12 +78,12 @@ jobs:
         key: build-kernel-bomb
         max-size: 1G
 
-    - name: Setup KernelSU (SukiSU-Ultra builtin)
+    - name: Setup KernelSU (SukiSU builtin-new)
       if: env.ENABLE_KSU == 'true'
       run: |
         set -e
-        echo "KernelSU: 启用 (SukiSU-Ultra, builtin 分支 / 手动钩子)"
-        curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
+        echo "KernelSU: 启用 (SukiSU builtin-new 分支)"
+        curl -LSs "https://git.zako.shirkneko.top:20004/shirkneko/SukiSU/raw/branch/main/kernel/setup.sh" | bash -s builtin-new
 
     - name: Patch KernelSU for Linux 4.14 compat
       if: env.ENABLE_KSU == 'true'

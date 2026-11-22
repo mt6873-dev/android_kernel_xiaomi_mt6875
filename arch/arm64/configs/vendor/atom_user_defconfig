@@ -522,6 +522,8 @@ CONFIG_KPROBE_EVENTS=y
 # CONFIG_KSU_SUSFS_SUS_MOUNT is not set
 # CONFIG_KSU_SUSFS_SUS_PATH is not set
 CONFIG_KSU=y
+# SukiSU builtin-new: use syscall table hijack for sucompat (4.14 ARM64)
+CONFIG_KSU_TAMPER_SYSCALL_TABLE=y
 
 # ---- BPF / XDP ----
 # CONFIG_BPF_UNPRIV_DEFAULT_OFF is not set
