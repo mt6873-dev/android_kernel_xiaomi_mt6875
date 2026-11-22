@@ -1870,10 +1870,20 @@ enum ENUM_TXS_CONTROL_FLAG {
 #if (CFG_SUPPORT_DFS_MASTER == 1)
 enum ENUM_DFS_CTRL {
 	RDD_STOP = 0,
-	RDD_START,
-	RDD_DET_MODE,
-	RDD_RADAR_EMULATE,
-	RDD_START_TXQ
+	RDD_START = 1,
+	RDD_DET_MODE = 2,
+	RDD_RADAR_EMULATE = 3,
+	/* Stock FW ABI: the stock driver stores 0x14 (20) for
+	 * RDD_START_TXQ, e.g. p2pFuncStartGO @ 0x2f9b70 and
+	 * p2pFuncDfsSwitchCh @ 0x2fac5c in
+	 * /vendor/lib/modules/wlan_drv_gen4m.ko
+	 * ("Start TXQ - DFS ctrl: 20, RDD index: ...").
+	 * RDD_STOP/START/DET_MODE/RADAR_EMULATE are 0/1/2/3 in both
+	 * drivers, only RDD_START_TXQ moved. Keep this in sync with the
+	 * vendor FW loaded from /vendor/firmware, otherwise the DFS
+	 * start-TXQ command is ignored by FW.
+	 */
+	RDD_START_TXQ = 0x14
 };
 #endif
 
