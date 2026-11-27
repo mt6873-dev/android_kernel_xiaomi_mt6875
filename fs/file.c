@@ -705,6 +705,21 @@ static inline void __range_cloexec(struct files_struct *cur_fds,
 static inline void __range_close(struct files_struct *cur_fds, unsigned int fd,
 				 unsigned int max_fd)
 {
+	unsigned n;
+
+	/*
+	 * Clamp max_fd to the last valid fdtable index.
+	 *
+	 * Callers such as systemd pass max_fd = ~0U (close_range(3, ~0U, 0)).
+	 * Without the clamp, "while (fd <= max_fd)" never terminates once
+	 * "fd++" wraps past UINT_MAX, so the task spins in pick_file()
+	 * forever, burning CPU and hanging systemd (and systemctl).
+	 */
+	spin_lock(&cur_fds->file_lock);
+	n = last_fd(files_fdtable(cur_fds));
+	spin_unlock(&cur_fds->file_lock);
+	max_fd = min(max_fd, n);
+
 	while (fd <= max_fd) {
 		struct file *file;
 
