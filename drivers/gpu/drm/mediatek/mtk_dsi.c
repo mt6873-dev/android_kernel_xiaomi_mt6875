@@ -5124,6 +5124,24 @@ ssize_t panel_disp_param_send_lock(struct drm_connector* connector, int32_t para
 	ret = mtk_ddp_comp_io_cmd_dispparam(comp, NULL, io_cmd, (void *)&param_value);
 	return ret;
 }
+
+int mtk_dsi_set_fod_hbm(bool en)
+{
+	struct mtk_ddp_comp *comp;
+	int param_value = 0;
+
+	if (!g_mtk_crtc)
+		return -ENODEV;
+
+	comp = mtk_ddp_comp_request_output(g_mtk_crtc);
+	if (!comp || !comp->funcs || !comp->funcs->io_cmd_dispparam)
+		return -ENODEV;
+
+	return comp->funcs->io_cmd_dispparam(comp, NULL,
+			en ? DISPPARAM_HBM_FOD_ON : DISPPARAM_HBM_FOD_OFF,
+			(void *)&param_value);
+}
+
 static ssize_t mtk_dsi_host_send_cmd(struct mtk_dsi *dsi,
 				     const struct mipi_dsi_msg *msg, u8 flag)
 {

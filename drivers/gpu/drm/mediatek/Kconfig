@@ -23,6 +23,15 @@ config DRM_MEDIATEK_BOMB
 	help
 	  Choose this option if you have a BOMB Mediatek SoCs.
 
+config MI_DISP_FEATURE
+	bool "mi_display feature node (FOD HBM bridge)"
+	depends on DRM_MEDIATEK
+	help
+	  Create /dev/mi_display/disp_feature so that SurfaceFlinger can
+	  report the on-screen fingerprint status.  The status is translated
+	  into the panel FOD high-brightness mode (DISPPARAM_HBM_FOD_ON/OFF).
+	  Say Y if you want the stock style fingerprint highlight.
+
 config DRM_MEDIATEK_HDMI
 	tristate "DRM HDMI Support for Mediatek SoCs"
 	depends on DRM_MEDIATEK
