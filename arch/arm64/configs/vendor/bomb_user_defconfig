@@ -590,7 +590,7 @@ CONFIG_USB_NET_ZAURUS=y
 CONFIG_USB_USBNET=y
 CONFIG_XLOGCHAR=y
 CONFIG_KSU=y
-# SukiSU builtin-new: use syscall table hijack for sucompat (4.14 ARM64)
+# SukiSU builtin: use syscall table hijack for sucompat (4.14 ARM64)
 # Replaces manual hooks for execve/faccessat/newfstatat/newfstat_ret/reboot
 CONFIG_KSU_TAMPER_SYSCALL_TABLE=y
 # 不集成 SUSFS, 关掉 builtin 默认开启的 SUSFS addon

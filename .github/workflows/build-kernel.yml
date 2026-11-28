@@ -78,11 +78,11 @@ jobs:
         key: build-kernel-bomb
         max-size: 1G
 
-    - name: Setup KernelSU (SukiSU builtin-new)
+    - name: Setup KernelSU (SukiSU builtin)
       if: env.ENABLE_KSU == 'true'
       run: |
         set -e
-        echo "KernelSU: 启用 (SukiSU builtin-new 分支)"
+        echo "KernelSU: 启用 (SukiSU builtin 分支)"
         # Pre-clone with shallow depth + retry to avoid TLS timeout on port 20004.
         # setup.sh skips clone if KernelSU/ already exists.
         git config --global http.postBuffer 524288000
@@ -95,37 +95,12 @@ jobs:
           fi
           echo "Clone attempt $i..."
           rm -rf KernelSU
-          git clone --depth 1 -b builtin-new https://git.zako.shirkneko.top:20004/shirkneko/SukiSU KernelSU && break
+          git clone --depth 1 -b builtin https://git.zako.shirkneko.top:20004/shirkneko/SukiSU KernelSU && break
           echo "Clone failed, retrying in 5s..."
           sleep 5
         done
         [ -d KernelSU/.git ] || { echo "FATAL: KernelSU clone failed after 3 attempts"; exit 1; }
-        curl -LSs "https://git.zako.shirkneko.top:20004/shirkneko/SukiSU/raw/branch/main/kernel/setup.sh" | bash -s builtin-new
-
-    - name: Patch KernelSU for Linux 4.14 compat
-      if: env.ENABLE_KSU == 'true'
-      run: |
-        set -e
-        KSU=KernelSU/kernel
-        # 1) fallthrough keyword only exists on 5.x; comment it out for 4.14
-        sed -i 's|\bfallthrough;|/* fallthrough */|' $KSU/policy/allowlist.c
-        grep -qF '/* fallthrough */' $KSU/policy/allowlist.c
-        # 2) access_ok() is 3-arg (VERIFY_READ first) on 4.14 vs 2-arg on 5.0+;
-        #    kpm.c uses bare access_ok() -> replace with KernelSU's compat macro.
-        sed -i 's/\([^_a-zA-Z0-9]\)access_ok(/\1ksu_access_ok(/g' $KSU/extension/kpm/kpm.c
-        ! grep -q '[^_]access_ok(' $KSU/extension/kpm/kpm.c
-        # 3) extension/cpu_spoof.c needs 5.10+ vDSO/clocksource APIs absent on 4.14 -> stub it
-        cat > $KSU/extension/cpu_spoof.c <<'KSUEOF'
-        /* 4.14 compat stub: cpu spoof needs 5.10+ vDSO/clocksource APIs. */
-        #include <linux/errno.h>
-        #include "cpu_spoof.h"
-        int ksu_extension_cpu_spoof_io(u32 id, void __user *raw)
-        {
-            return -EOPNOTSUPP;
-        }
-        KSUEOF
-        grep -qF 'return -EOPNOTSUPP;' $KSU/extension/cpu_spoof.c
-        echo "KernelSU 4.14 compat patch applied"
+        curl -LSs "https://git.zako.shirkneko.top:20004/shirkneko/SukiSU/raw/branch/main/kernel/setup.sh" | bash -s builtin
 
     - name: Build kernel
       run: |
@@ -134,6 +109,9 @@ jobs:
         export KBUILD_BUILD_HOST=Github-Action
         export KBUILD_BUILD_USER=${{ github.actor }}
         make -j1 LLVM=1 CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip O=out ARCH=arm64 CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- vendor/${KERNEL_CONFIG}_user_defconfig
+        # KernelSU unity build includes security/selinux headers; make sure the
+        # generated flask.h exists before the parallel build reaches drivers/
+        make -j1 LLVM=1 CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip O=out ARCH=arm64 CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- security/selinux/
         make -j$(nproc --all) LLVM=1 CC="ccache clang" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip O=out ARCH=arm64 CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
     - name: Check output
